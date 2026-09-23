@@ -22,9 +22,8 @@ var scale_factor: float = 0.03125
 ## [FuncGodotFGDFile] that translates map file classnames into Godot nodes and packed scenes.
 @export var entity_fgd: FuncGodotFGDFile = preload("res://addons/func_godot/fgd/func_godot_fgd.tres")
 
-## If true, will organize [SceneTree] using TrenchBroom Layers and Groups or Hammer Visgroups. Groups will be generated as [Node3D] nodes. 
-## All non-entity structural brushes will be moved out of their groups and merged into the `Worldspawn` entity.
-## Any Layers toggled to be omitted from export in TrenchBroom and their child entities and groups will not be built.
+## If true, will organize [SceneTree] using the map's layers and groups. Groups will be generated as [Node3D] nodes. 
+## Layers the map omits from the build and their child entities and groups will not be built.
 @export var use_groups_hierarchy: bool = false
 
 ## Texel size for UV2 unwrapping.
@@ -72,7 +71,7 @@ var scale_factor: float = 0.03125
 @export_dir var base_texture_dir: String = "res://textures"
 
 ## File extensions to search for texture data.
-@export var texture_file_extensions: Array[String] = ["png", "jpg", "jpeg", "bmp", "tga", "webp", "wal"]
+@export var texture_file_extensions: Array[String] = ["png", "jpg", "jpeg", "bmp", "tga", "webp"]
 
 @export_subgroup("Hint Textures")
 ## Optional path for the clip texture, relative to [member base_texture_dir]. 
@@ -95,9 +94,6 @@ var scale_factor: float = 0.03125
 	set(tex):
 		origin_texture = tex.to_lower()
 @export_subgroup("")
-
-## Optional [QuakeWadFile] resources to apply textures from. See the [Quake Wiki](https://quakewiki.org/wiki/Texture_Wad) for more information on Quake Texture WADs.
-@export var texture_wads: Array[QuakeWadFile] = []
 
 #endregion
 

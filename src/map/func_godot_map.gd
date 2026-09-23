@@ -1,9 +1,9 @@
 @tool
 @icon("res://addons/func_godot/icons/icon_slipgate3d.svg")
 class_name FuncGodotMap extends Node3D
-## Scene generator node that parses a [QuakeMapFile] according to its [FuncGodotMapSettings].
+## Scene generator node that builds a .tdm map according to its [FuncGodotMapSettings].
 ##
-## A scene generator node that parses a [QuakeMapFile]. It uses a [FuncGodotMapSettings] 
+## A scene generator node that parses a .tdm map. It uses a [FuncGodotMapSettings] 
 ## and the [FuncGodotFGDFile] contained within in order to determine what is built and how it is built.[br][br]
 ## If your map is not building correctly, double check your [member map_settings] to make sure you're using 
 ## the correct [FuncGodotMapSettings].
@@ -27,11 +27,11 @@ signal build_complete
 @export_tool_button("Clear Map","Skeleton3D") var _clear_func: Callable = clear_children
 
 @export_category("Map")
-## Local path to TDM, MAP or VMF file to build a scene from.
-@export_file("*.tdm","*.map","*.vmf") var local_map_file: String = ""
+## Local path to the .tdm map to build a scene from.
+@export_file("*.tdm") var local_map_file: String = ""
 
-## Global path to TDM, MAP or VMF file to build a scene from. Overrides [member FuncGodotMap.local_map_file].
-@export_global_file("*.tdm","*.map","*.vmf") var global_map_file: String = ""
+## Global path to the .tdm map to build a scene from. Overrides [member FuncGodotMap.local_map_file].
+@export_global_file("*.tdm") var global_map_file: String = ""
 
 ## TrenchDot: rebuild automatically when the TrenchDot editor reports that this map was saved (live link).
 @export var auto_rebuild_on_save: bool = true
@@ -72,7 +72,7 @@ func clear_children() -> void:
 	if Engine.is_editor_hint():
 		Engine.get_singleton(&"EditorInterface").mark_scene_as_unsaved()
 
-## Checks if a [QuakeMapFile] for the build process is provided and can be found.
+## Checks if a map file for the build process is provided and can be found.
 func verify() -> Error:
 	# Prioritize global map file path for building at runtime
 	_map_file_internal = global_map_file if global_map_file != "" else local_map_file
@@ -88,7 +88,11 @@ func verify() -> Error:
 			fail_build("Error: failed to retrieve path for UID (%s)" % _map_file_internal)
 			return ERR_DOES_NOT_EXIST
 		_map_file_internal = ResourceUID.get_id_path(uid)
-	
+
+	if _map_file_internal.get_extension().to_lower() != "tdm":
+		fail_build("%s is not a .tdm map." % _map_file_internal)
+		return ERR_FILE_UNRECOGNIZED
+
 	if not FileAccess.file_exists(_map_file_internal):
 		if not FileAccess.file_exists(_map_file_internal + ".import"):
 			fail_build("Map file %s does not exist." % _map_file_internal)
@@ -130,13 +134,12 @@ func _build(text: String) -> void:
 		print("\nPARSER")
 		parser.declare_step.connect(FuncGodotUtil.print_profile_info.bind(parser._SIGNATURE))
 	var parse_data: FuncGodotData.ParseData
-	var is_tdm := _map_file_internal.get_extension().to_lower() == "tdm"
-	if text != "" and is_tdm:
+	if text != "":
 		parse_data = parser.parse_tdm(text, map_settings, _map_file_internal)
 	else:
 		parse_data = parser.parse_map_data(_map_file_internal, map_settings)
 	# TrenchDot: lets a live session tell whether the scene still matches the map it was built from.
-	if is_tdm and (text != "" or Engine.is_editor_hint()):
+	if text != "" or Engine.is_editor_hint():
 		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))
 	
 	if parse_data.entities.is_empty():
@@ -172,8 +175,7 @@ func _build(text: String) -> void:
 	# TrenchDot: scatter sets (trees, rocks, foliage) as MultiMesh and shared collision.
 	TrenchDotScatter.build_all(self, parse_data.scatters, map_settings)
 	# TrenchDot: sky, fog and sun from worldspawn keys, the same values the editor's lit preview uses.
-	if is_tdm:
-		TrenchDotEnvironment.build(self, entities[0].properties)
+	TrenchDotEnvironment.build(self, entities[0].properties)
 	# TrenchDot: the chunk streamer goes in last, it groups everything built above.
 	var streamer := TrenchDotStreamer.build(self, entities[0].properties, map_settings)
 	if streamer:

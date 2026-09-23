@@ -8,7 +8,6 @@ class_name FuncGodotData
 ## [br][br]
 ## [FuncGodotData.FaceData][br]
 ## [FuncGodotData.BrushData][br]
-## [FuncGodotData.PatchData][br]
 ## [FuncGodotData.GroupData][br]
 ## [FuncGodotData.EntityData][br]
 
@@ -26,11 +25,9 @@ class FaceData extends RefCounted:
 	var tangents: PackedFloat32Array = []
 	## Local path to the texture without the extension, relative to the FuncGodotMap node's settings' base texture directory.
 	var texture: String
-	## UV transform data generated during the parsing stage. Used for both Standard and Valve 220 UV formats, 
-	## though rotation is not applied to the transform when using Valve 220.
+	## UV offset (origin) and scale (basis) generated during the parsing stage.
 	var uv: Transform2D
-	## Raw vector data provided by the Valve 220 format during parsing. It is used to calculate rotations. 
-	## The presence of this data determines how face UVs and tangents are calculated.
+	## U and V texture axes of the face, used to calculate UVs and tangents.
 	var uv_axes: PackedVector3Array = []
 	## Raw plane data parsed from the map file using the id Tech coordinate system.
 	var plane: Plane
@@ -123,15 +120,7 @@ class BrushData extends RefCounted:
 	## TrenchDot: the map node id, older nodes win when coplanar faces overlap.
 	var node_id: int = 0
 
-## Data struct representing a patch def entity.
-class PatchData extends RefCounted:
-	## Local path to the texture without the extension, relative to the FuncGodotMap node's settings' base texture directory.
-	var texture: String
-	var size: PackedInt32Array
-	var points: PackedVector3Array
-	var uvs: PackedVector2Array
-
-## Data struct representing a TrenchBroom Group, TrenchBroom Layer, or Valve VisGroup. 
+## Data struct representing a map layer or group. 
 ## Generated during the parsing stage and utilized during both parsing and entity assembly stages.
 class GroupData extends RefCounted:
 	enum GroupType { GROUP, LAYER, }
@@ -149,7 +138,7 @@ class GroupData extends RefCounted:
 	## Pointer to generated Node3D representing this group in the SceneTree.
 	var node: Node3D = null
 	## If true, erases all entities assigned to this group and then the group itself at the end of the parsing stage, preventing those entities from being generated into nodes. 
-	## Can be set in TrenchBroom on layers using the "omit layer" option.
+	## Set for layers the map omits from the build.
 	var omit: bool = false
 
 ## Data struct representing a map format entity.
@@ -160,13 +149,10 @@ class EntityData extends RefCounted:
 	## The entity's brush data collected during the parsing stage. If the entity's FGD resource cannot be found, 
 	## the presence of a single brush determines this entity to be a Solid Entity.
 	var brushes: Array[BrushData] = []
-	## The entity's patch def data collected during the parsing stage. If the entity's FGD resource cannot be found, 
-	## the presence of a single patch def determines this entity to be a Solid Entity.
-	var patches: Array[PatchData] = []
 	## Pointer to the group data this entity belongs to.
 	var group: GroupData = null
 	## The entity's FGD resource, determined by matching the classname properties of each. 
-	## This can only be a [FuncGodotFGDSolidClass], [FuncGodotFGDPointClass], or [FuncGodotFGDModelPointClass].
+	## This can only be a [FuncGodotFGDSolidClass] or a [FuncGodotFGDPointClass].
 	var definition: FuncGodotFGDEntityClass = null
 	## Mesh resource generated during the geometry generation stage and applied during the entity assembly stage.
 	var mesh: ArrayMesh = null

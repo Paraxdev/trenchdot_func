@@ -3,48 +3,10 @@ class_name FuncGodotUtil
 
 const _VERTEX_EPSILON: float = 0.008
 
-const _VEC3_UP_ID		:= Vector3(0.0, 0.0, 1.0)
-const _VEC3_RIGHT_ID		:= Vector3(0.0, 1.0, 0.0)
-const _VEC3_FORWARD_ID 	:= Vector3(1.0, 0.0, 0.0)
-
-# Quake Standard UV paraxial basis tables.
-# These arrays are index-coupled: normals[i] uses u_axes[i]/v_axes[i].
-const _QUAKE_STD_UV_BASE_NORMALS: Array[Vector3] = [
-	Vector3(0.0, 0.0, 1.0),
-	Vector3(0.0, 0.0, -1.0),
-	Vector3(1.0, 0.0, 0.0),
-	Vector3(-1.0, 0.0, 0.0),
-	Vector3(0.0, 1.0, 0.0),
-	Vector3(0.0, -1.0, 0.0),
-]
-const _QUAKE_STD_UV_BASE_U_AXES: Array[Vector3] = [
-	Vector3(1.0, 0.0, 0.0),
-	Vector3(1.0, 0.0, 0.0),
-	Vector3(0.0, 1.0, 0.0),
-	Vector3(0.0, 1.0, 0.0),
-	Vector3(1.0, 0.0, 0.0),
-	Vector3(1.0, 0.0, 0.0),
-]
-const _QUAKE_STD_UV_BASE_V_AXES: Array[Vector3] = [
-	Vector3(0.0, -1.0, 0.0),
-	Vector3(0.0, -1.0, 0.0),
-	Vector3(0.0, 0.0, -1.0),
-	Vector3(0.0, 0.0, -1.0),
-	Vector3(0.0, 0.0, -1.0),
-	Vector3(0.0, 0.0, -1.0),
-]
-
 ## Connected by the [FuncGodotMap] node to the build process' sub-components if the 
 ## [member FuncGodotMap.build_flags]'s SHOW_PROFILE_INFO flag is set.
 static func print_profile_info(message: String, signature: String) -> void:
 	prints(signature, message)
-
-## Return a [String] that corresponds to the current [OS]'s newline control characters.
-static func newline() -> String:
-	if OS.get_name() == "Windows":
-		return "\r\n"
-	else:
-		return "\n"
 
 #region MATH
 
@@ -71,32 +33,9 @@ static func is_point_in_convex_hull(planes: Array[Plane], vertex: Vector3) -> bo
 
 #endregion
 
-#region PATCH DEF
-
-## Returns the control points that defines a cubic curve for a equivalent input quadratic curve.
-static func elevate_quadratic(p0: Vector3, p1: Vector3, p2: Vector3) -> Array[Vector3]:
-	return [p0, p0 + (2.0/3.0) * (p1 - p0), p2 + (2.0/3.0) * (p1 - p2), p2 ]
-
-## Create a Curve3D and bake points.
-static func create_curve(start: Vector3, control: Vector3, end: Vector3, bake_interval: float = 0.05) -> Curve3D:
-	var ret := Curve3D.new()
-	ret.bake_interval = bake_interval
-	update_ref_curve(ret, start, control, end, bake_interval)
-	return ret
-
-## Update a Curve3D given quadratic inputs.
-static func update_ref_curve(curve: Curve3D, p0: Vector3, p1: Vector3, p2: Vector3, bake_interval: float = 0.05) -> void:
-	curve.clear_points()
-	curve.bake_interval = bake_interval
-	curve.add_point(p0, (p1 - p0) * (2.0 / 3.0))
-	curve.add_point(p1, (p1 - p0) * (1.0 / 3.0), (p2 - p1) * (1.0 / 3.0))
-	curve.add_point(p2, (p2 - p1 * (2.0 / 3.0)))
-
-#endregion
-
 #region TEXTURES
 
-## Fallback texture if the one defined in the [QuakeMapFile] cannot be found.
+## Fallback texture if the one a face names cannot be found.
 const default_texture_path: String = "res://addons/func_godot/textures/default_texture.png"
 
 const _pbr_textures: PackedInt32Array = [
@@ -123,9 +62,8 @@ const _pbr_features: PackedInt32Array = [
 	-1,
 ]
 
-## Searches for a Texture2D within the base texture directory or the WAD files added to map settings. 
-## If not found, a default texture is returned.
-static func load_texture(texture_name: String, wad_resources: Array[QuakeWadFile], map_settings: FuncGodotMapSettings) -> Texture2D:
+## Searches for a Texture2D within the base texture directory. If not found, a default texture is returned.
+static func load_texture(texture_name: String, map_settings: FuncGodotMapSettings) -> Texture2D:
 	for texture_file_extension in map_settings.texture_file_extensions:
 		var texture_path: String = map_settings.base_texture_dir.path_join(texture_name + "." + texture_file_extension)
 		if ResourceLoader.exists(texture_path):
@@ -134,11 +72,6 @@ static func load_texture(texture_name: String, wad_resources: Array[QuakeWadFile
 				return texture_file
 			else:
 				printerr("Error: Texture load failed! (%s) not a valid Texture2D resource", texture_path)
-	
-	var texture_name_lower: String = texture_name.to_lower()
-	for wad in wad_resources:
-		if texture_name_lower in wad.textures:
-			return wad.textures[texture_name_lower]
 	
 	return load(default_texture_path)
 
@@ -237,12 +170,6 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 	var texture_materials: Dictionary[String, Material] = {}
 	var texture_sizes: Dictionary[String, Vector2] = {}
 	
-	# Prepare WAD files
-	var wad_resources: Array[QuakeWadFile] = []
-	for wad in map_settings.texture_wads:
-		if wad and not wad in wad_resources:
-			wad_resources.append(wad)
-	
 	# TrenchDot: decal variants are made from their base material once every base is loaded.
 	var decals: Array[String] = []
 	for entity in entity_data:
@@ -263,7 +190,7 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 					continue
 				# TrenchDot: two materials blended by vertex alpha.
 				if TrenchDotBlend.is_blend(texture_name):
-					var blend: Array = TrenchDotBlend.build(texture_name, map_settings, wad_resources)
+					var blend: Array = TrenchDotBlend.build(texture_name, map_settings)
 					texture_materials[texture_name] = blend[0]
 					texture_sizes[texture_name] = blend[1]
 					continue
@@ -284,7 +211,7 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 						if albedo is Texture2D:
 							texture_sizes[texture_name] = albedo.get_size()
 					if not texture_sizes.has(texture_name):
-						var texture: Texture2D = load_texture(texture_name, wad_resources, map_settings)
+						var texture: Texture2D = load_texture(texture_name, map_settings)
 						if texture:
 							texture_sizes[texture_name] = texture.get_size()
 					if not texture_sizes.has(texture_name):
@@ -296,7 +223,7 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 				# Material generation
 				elif map_settings.default_material:
 					var material = map_settings.default_material.duplicate(false)
-					var texture: Texture2D = load_texture(texture_name, wad_resources, map_settings)
+					var texture: Texture2D = load_texture(texture_name, map_settings)
 					texture_sizes[texture_name] = texture.get_size()
 					
 					if material is BaseMaterial3D:
@@ -356,53 +283,9 @@ static func get_valve_uv(vertex: Vector3, u_axis: Vector3, v_axis: Vector3, uv_b
 	uv.y /= texture_size.y
 	return uv
 
-## Returns UV coordinate calculated from the original id Standard UV format.
-static func get_quake_uv(vertex: Vector3, normal: Vector3, uv_in := Transform2D.IDENTITY, texture_size := Vector2.ONE) -> Vector2: 
-	# Quake Standard UVs are paraxial: choose one of 6 cardinal projection bases,
-	# then apply per-face rotation/scale/offset from uv_in in that basis.
-	# Pick the projection basis whose canonical normal is closest to the face normal.
-	var best_index: int = 0
-	var best_dot_product: float = -INF
-	for i in _QUAKE_STD_UV_BASE_NORMALS.size():
-		var d: float = normal.dot(_QUAKE_STD_UV_BASE_NORMALS[i])
-		if d > best_dot_product:
-			best_dot_product = d
-			best_index = i
-
-	# Derive rotation from basis vectors directly to avoid Transform2D decomposition
-	# ambiguity on mirrored UV scales.
-	var rot: float = atan2(-uv_in.x.y, uv_in.x.x)
-	var base_u_axis: Vector3 = _QUAKE_STD_UV_BASE_U_AXES[best_index]
-	var base_v_axis: Vector3 = _QUAKE_STD_UV_BASE_V_AXES[best_index]
-	var rot_axis: Vector3 = base_v_axis.cross(base_u_axis).normalized()
-	var u_axis: Vector3 = base_u_axis.rotated(rot_axis, rot)
-	var v_axis: Vector3 = base_v_axis.rotated(rot_axis, rot)
-
-	# Derive signed scale by projecting onto rotated UV axes.
-	# Transform2D.get_scale() can lose sign information on mirrored faces.
-	var rot_x := Vector2(cos(rot), -sin(rot))
-	var rot_y := Vector2(sin(rot), cos(rot))
-	var sx: float = uv_in.x.dot(rot_x)
-	var sy: float = uv_in.y.dot(rot_y)
-	if is_zero_approx(sx):
-		sx = uv_in.x.length()
-	if is_zero_approx(sy):
-		sy = uv_in.y.length()
-	var uv_out := Vector2(
-		u_axis.dot(vertex) / sx,
-		v_axis.dot(vertex) / sy
-	)
-
-	uv_out += uv_in.origin
-	uv_out /= texture_size
-	return uv_out
-
-## Determines which UV format is being used and returns the UV coordinate.
+## Returns the UV coordinate of a vertex on the face.
 static func get_face_vertex_uv(vertex: Vector3, face: FuncGodotData.FaceData, texture_size: Vector2) -> Vector2:
-	if face.uv_axes.size() >= 2:
-		return get_valve_uv(vertex, face.uv_axes[0], face.uv_axes[1], face.uv, texture_size)
-	else:
-		return get_quake_uv(vertex, face.plane.normal, face.uv, texture_size)
+	return get_valve_uv(vertex, face.uv_axes[0], face.uv_axes[1], face.uv, texture_size)
 
 ## Returns the tangent calculated from the Valve 220 UV format.
 static func get_valve_tangent(u: Vector3, v: Vector3, normal: Vector3) -> PackedFloat32Array:
@@ -425,36 +308,8 @@ static func get_valve_tangent(u: Vector3, v: Vector3, normal: Vector3) -> Packed
 	#tangent = tangent.normalized()
 	#return [tangent.x, tangent.y, tangent.z, -signf(normal.cross(tangent).dot(v.normalized))]
 
-## Returns the tangent calculated from the original id Standard UV format.
-static func get_quake_tangent(normal: Vector3, uv_y_scale: float, uv_rotation: float) -> PackedFloat32Array:
-	var dx := normal.dot(_VEC3_RIGHT_ID)
-	var dy := normal.dot(_VEC3_UP_ID)
-	var dz := normal.dot(_VEC3_FORWARD_ID)
-	var dxa := absf(dx)
-	var dya := absf(dy)
-	var dza := absf(dz)
-	var u_axis: Vector3
-	var v_sign: float = 0.0
-	
-	if dya >= dxa and dya >= dza:
-		u_axis = _VEC3_FORWARD_ID
-		v_sign = signf(dy)
-	elif dxa >= dya and dxa >= dza:
-		u_axis = _VEC3_FORWARD_ID
-		v_sign = -signf(dx)
-	elif dza >= dya and dza >= dxa:
-		u_axis = _VEC3_RIGHT_ID
-		v_sign = signf(dz)
-		
-	v_sign *= signf(uv_y_scale)
-	u_axis = u_axis.rotated(normal, deg_to_rad(-uv_rotation) * v_sign)
-	return [u_axis.x, u_axis.y, u_axis.z, v_sign]
-
 static func get_face_tangent(face: FuncGodotData.FaceData) -> PackedFloat32Array:
-	if face.uv_axes.size() >= 2:
-		return get_valve_tangent(face.uv_axes[0], face.uv_axes[1], face.plane.normal)
-	else:
-		return get_quake_tangent(face.plane.normal, face.uv.get_scale().y, face.uv.get_rotation())
+	return get_valve_tangent(face.uv_axes[0], face.uv_axes[1], face.plane.normal)
 
 #endregion
 

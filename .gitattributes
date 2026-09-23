@@ -1,5 +1,4 @@
 * text=auto eol=lf
 *.png binary
-*.lmp binary
 /.gitattributes export-ignore
 /.gitignore export-ignore

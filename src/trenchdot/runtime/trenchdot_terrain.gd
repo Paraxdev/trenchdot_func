@@ -212,7 +212,7 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 		var layer: Dictionary = (layers[l] if l < layers.size() else layers[0]) if not layers.is_empty() else {}
 		var texture_name := str(layer.get("material", ""))
 		if texture_name != "":
-			material.set_shader_parameter("layer%d" % l, FuncGodotUtil.load_texture(texture_name, [], settings))
+			material.set_shader_parameter("layer%d" % l, FuncGodotUtil.load_texture(texture_name, settings))
 			pixelated = pixelated or _is_pixelated(texture_name, settings)
 			glow = _set_layer_glow(material, l, _layer_material(texture_name, settings), glow[0], glow[1], glow[2])
 		tiles[l] = float(layer.get("tile", 256.0)) * scale

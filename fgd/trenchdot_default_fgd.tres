@@ -6,5 +6,4 @@
 
 [resource]
 script = ExtResource("1_fgd")
-fgd_name = "TrenchDot"
 base_fgd_files = Array[Resource]([ExtResource("2_base"), ExtResource("3_td")])

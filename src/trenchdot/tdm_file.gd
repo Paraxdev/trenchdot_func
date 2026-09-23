@@ -21,8 +21,8 @@ static func read(path: String) -> Dictionary:
 	if FileAccess.file_exists(path):
 		return decode(FileAccess.get_file_as_bytes(path))
 	var imported: Resource = load(path) if ResourceLoader.exists(path) else null
-	if imported is QuakeMapFile:
-		return decode(imported.map_bytes if not imported.map_bytes.is_empty() else imported.map_data.to_utf8_buffer())
+	if imported is TrenchDotImportedMap:
+		return decode(imported.map_bytes)
 	return _failed("cannot read %s" % path)
 
 ## Reads [param path] and reports what a damaged file lost as warnings. Returns the map, or null after reporting why

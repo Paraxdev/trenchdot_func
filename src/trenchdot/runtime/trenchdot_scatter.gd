@@ -140,7 +140,7 @@ static func _item_material(data: Dictionary, item: Dictionary, settings: FuncGod
 	if ResourceLoader.exists(path):
 		return load(path) as Material
 	# No material resource for the name, fall back to its plain texture.
-	var texture := FuncGodotUtil.load_texture(name, [], settings)
+	var texture := FuncGodotUtil.load_texture(name, settings)
 	if not texture:
 		push_warning("[TrenchDot] scatter material %s not found" % name)
 		return null

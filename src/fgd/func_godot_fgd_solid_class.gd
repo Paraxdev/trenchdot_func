@@ -101,6 +101,3 @@ enum CollisionShapeType {
 @export_group("Scripting")
 ## An optional [Script] file to attach to the node generated on map build.
 @export var script_class: Script
-
-func _init():
-	prefix = "@SolidClass"

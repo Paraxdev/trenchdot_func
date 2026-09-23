@@ -40,11 +40,11 @@ static func _material_file(texture_name: String, settings: FuncGodotMapSettings)
 	var path := dir.path_join(texture_name + "." + settings.material_file_extension)
 	return load(path) if ResourceLoader.exists(path) else null
 
-static func albedo(texture_name: String, settings: FuncGodotMapSettings, wads: Array[QuakeWadFile]) -> Texture2D:
+static func albedo(texture_name: String, settings: FuncGodotMapSettings) -> Texture2D:
 	var material := _material_file(texture_name, settings)
 	if material is BaseMaterial3D and material.albedo_texture:
 		return material.albedo_texture
-	return FuncGodotUtil.load_texture(texture_name, wads, settings)
+	return FuncGodotUtil.load_texture(texture_name, settings)
 
 static func _shader(pixelated: bool) -> Shader:
 	if not pixelated:
@@ -55,10 +55,10 @@ static func _shader(pixelated: bool) -> Shader:
 	return _nearest_shader
 
 ## Material and base texture size for a composite blend texture name.
-static func build(texture_name: String, settings: FuncGodotMapSettings, wads: Array[QuakeWadFile]) -> Array:
+static func build(texture_name: String, settings: FuncGodotMapSettings) -> Array:
 	var names := parts(texture_name)
-	var base := albedo(names[0], settings, wads)
-	var blend := albedo(names[1] if names.size() > 1 else names[0], settings, wads)
+	var base := albedo(names[0], settings)
+	var blend := albedo(names[1] if names.size() > 1 else names[0], settings)
 	var base_material := _material_file(names[0], settings)
 	var pixelated: bool = base_material is BaseMaterial3D and base_material.texture_filter in [BaseMaterial3D.TEXTURE_FILTER_NEAREST, BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS]
 	var material := ShaderMaterial.new()

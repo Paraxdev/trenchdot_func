@@ -13,7 +13,6 @@ const _OriginType 	:= FuncGodotFGDSolidClass.OriginType
 const _GroupData		:= FuncGodotData.GroupData
 const _EntityData 		:= FuncGodotData.EntityData
 const _BrushData 		:= FuncGodotData.BrushData
-const _PatchData 		:= FuncGodotData.PatchData
 const _FaceData 		:= FuncGodotData.FaceData
 const _VertexGroupData	:= FuncGodotData.VertexGroupData
 
@@ -42,48 +41,6 @@ func is_clip(face: _FaceData) -> bool:
 
 func is_origin(face: _FaceData) -> bool:
 	return FuncGodotUtil.is_origin(face.texture, map_settings)
-
-#endregion
-
-#region PATCHES
-func sample_bezier_curve(controls: Array[Vector3], t: float) -> Vector3:
-	var points: Array[Vector3] = controls.duplicate()
-	for i in controls.size():
-		for j in controls.size() - 1 - i:
-			points[j] = points[j].lerp(points[j + 1], t)
-	return points[0]
-
-func sample_bezier_surface(controls: Array[Vector3], width: int, height: int, u: float, v: float) -> Vector3:
-	var curve: Array[Vector3] = []
-	for x in range(width):
-		var col: Array[Vector3] = []
-		for y in range(height):
-			var idx := y * width + x
-			col.append(controls[idx])
-		curve.append(sample_bezier_curve(col, v))
-	return sample_bezier_curve(curve, u)
-
-# Generate patch triangle indices
-func get_triangle_indices(width: int, height: int) -> Array[int]:
-	var indices: Array[int] = []
-	if width < 2 or height < 2:
-		return indices
-	
-	for row in range(height - 1):
-		for col in range(width - 1):
-			## First triangle of the square; top left, top right, bottom left
-			indices.append(col + row * width)             
-			indices.append((col + 1) + row * width)       
-			indices.append(col + (row + 1) * width)      
-			 
-			## Second triangle of the square; top right, bottom right, bottom left
-			indices.append((col + 1) + row * width)       
-			indices.append((col + 1) + (row + 1) * width) 
-			indices.append(col + (row + 1) * width)      
-	return indices
-
-func create_patch_mesh(data: Array[_PatchData], mesh: Mesh):
-	return
 
 #endregion
 

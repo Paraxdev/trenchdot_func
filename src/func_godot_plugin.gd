@@ -2,10 +2,7 @@
 @icon("res://addons/func_godot/icons/icon_godot_ranger.svg")
 class_name FuncGodotPlugin extends EditorPlugin
 
-var map_import_plugin : QuakeMapImportPlugin = null
-var palette_import_plugin : QuakePaletteImportPlugin = null
-var wad_import_plugin: QuakeWadImportPlugin = null
-var wal_import_plugin: Quake2WalImportPlugin = null
+var map_import_plugin: TrenchDotTdmImportPlugin = null
 
 #var func_godot_map_progress_bar: Control = null
 var edited_object_ref: WeakRef = weakref(null)
@@ -26,16 +23,8 @@ func _edit(object: Object) -> void:
 		#func_godot_map_progress_bar.set_visible(visible)
 
 func _enter_tree() -> void:
-	# Import plugins
-	map_import_plugin = QuakeMapImportPlugin.new()
-	palette_import_plugin = QuakePaletteImportPlugin.new()
-	wad_import_plugin = QuakeWadImportPlugin.new()
-	wal_import_plugin = Quake2WalImportPlugin.new()
-	
+	map_import_plugin = TrenchDotTdmImportPlugin.new()
 	add_import_plugin(map_import_plugin)
-	add_import_plugin(palette_import_plugin)
-	add_import_plugin(wad_import_plugin)
-	add_import_plugin(wal_import_plugin)
 	bbmodel_import_plugin = TrenchDotBBModelImportPlugin.new()
 	add_import_plugin(bbmodel_import_plugin)
 
@@ -74,17 +63,6 @@ func _enter_tree() -> void:
 		ProjectSettings.add_property_info(property_info)
 		ProjectSettings.set_as_basic("func_godot/default_inverse_scale_factor", true)
 		ProjectSettings.set_initial_value("func_godot/default_inverse_scale_factor", 32.0)
-	
-	# Model Point Class Default Path
-	if not ProjectSettings.has_setting("func_godot/model_point_class_save_path"):
-		ProjectSettings.set_setting("func_godot/model_point_class_save_path", "")
-		var property_info = {
-			"name": "func_godot/model_point_class_save_path",
-			"type": TYPE_STRING
-		}
-		ProjectSettings.add_property_info(property_info)
-		ProjectSettings.set_as_basic("func_godot/model_point_class_save_path", true)
-		ProjectSettings.set_initial_value("func_godot/model_point_class_save_path", "")
 
 func _exit_tree() -> void:
 	remove_tool_menu_item("TrenchDot: Export Game Config")
@@ -93,19 +71,10 @@ func _exit_tree() -> void:
 		trenchdot = null
 	remove_custom_type("FuncGodotMap")
 	remove_import_plugin(map_import_plugin)
-	remove_import_plugin(palette_import_plugin)
+	map_import_plugin = null
 	if bbmodel_import_plugin:
 		remove_import_plugin(bbmodel_import_plugin)
 		bbmodel_import_plugin = null
-	if wad_import_plugin:
-		remove_import_plugin(wad_import_plugin)
-	if wal_import_plugin:
-		remove_import_plugin(wal_import_plugin)
-		
-	map_import_plugin = null
-	palette_import_plugin = null
-	wad_import_plugin = null
-	wal_import_plugin = null
 	
 	#if func_godot_map_progress_bar:
 		#remove_control_from_container(EditorPlugin.CONTAINER_INSPECTOR_BOTTOM, func_godot_map_progress_bar)
