@@ -223,7 +223,26 @@ func build_config() -> Dictionary:
 		"entities": entities,
 	}
 
+## Problems in [member fgd_file]'s [code]meta_properties[/code] that [method build_config] exports without complaint.
+## An empty [code]inputs[/code] or [code]outputs[/code] array means no curation (every discovered one stays), not
+## zero entries, and [code]size[/code] needs an [AABB] with a positive size on every axis.
+func lint() -> Array[String]:
+	var warnings: Array[String] = []
+	var defs: Dictionary = fgd_file.get_entity_definitions() if fgd_file else {}
+	for classname in defs:
+		var meta: Dictionary = defs[classname].meta_properties
+		for key in ["inputs", "outputs"]:
+			if meta.has(key) and meta[key] is Array and meta[key].is_empty():
+				warnings.append("%s: meta_properties.%s is an empty array, which keeps every discovered one (no curation). Remove the key or list at least one name." % [classname, key])
+		if meta.has("size"):
+			var size: Variant = meta["size"]
+			if not (size is AABB) or size.size.x <= 0.0 or size.size.y <= 0.0 or size.size.z <= 0.0:
+				warnings.append("%s: meta_properties.size must be an AABB with a positive size on every axis." % classname)
+	return warnings
+
 func export_file() -> Error:
+	for w in lint():
+		push_warning("[TrenchDot] %s" % w)
 	var text := JSON.stringify(build_config(), "  ", false)
 	var file := FileAccess.open(output_path, FileAccess.WRITE)
 	if not file:
