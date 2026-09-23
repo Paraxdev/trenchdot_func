@@ -281,7 +281,7 @@ func apply_entity_properties(node: Node, data: _EntityData) -> void:
 	if node.has_method("_func_godot_apply_properties"):
 		node.call("_func_godot_apply_properties", properties)
 	elif data.definition and data.definition.meta_properties.get("csharp", false):
-		# TrenchDot: C# entities get snake_case map properties on their PascalCase members.
+		# C# entities get snake_case map properties on their PascalCase members.
 		TrenchDotCSharp.apply_properties(node, properties)
 	
 	if node.has_method("_func_godot_build_complete"):
@@ -332,7 +332,6 @@ func generate_entity_node(entity_data: _EntityData, entity_index: int) -> Node:
 ## Main entity assembly process called by [FuncGodotMap]. Generates and sorts group nodes in the [SceneTree] first, 
 ## then generates and assembles [Node]s based upon the provided [FuncGodotData.EntityData] and adds them to the [SceneTree].
 func build(map_node: FuncGodotMap, entities: Array[_EntityData], groups: Array[_GroupData]) -> void:
-	# TrenchDot: one owner rule for every generated node, see TrenchDotBuild.scene_owner.
 	var scene_root := TrenchDotBuild.scene_owner(map_node)
 	build_flags = map_node.build_flags
 
@@ -365,14 +364,14 @@ func build(map_node: FuncGodotMap, entities: Array[_EntityData], groups: Array[_
 					parent = group.node
 		var entity_node := attach_entity(generate_entity_node(entity_data, entity_index), entity_data, parent, scene_root)
 		if entity_node and entity_index == 0 and parent == map_node:
-			# TrenchDot: kept overlays stay in front, so no new node is inserted before an existing sibling.
+			# Kept overlays stay in front, so no new node is inserted before an existing sibling.
 			map_node.move_child(entity_node, TrenchDotOverlay.leading_kept(map_node))
 	declare_step.emit("Entity assembly and property application complete")
 
 	TrenchDotIO.setup(entities, scene_root)
 	declare_step.emit("Entity I/O connections complete")
 
-## TrenchDot: adds a node made by [method generate_entity_node] under [param parent], sets owners and applies the
+## Adds a node made by [method generate_entity_node] under [param parent], sets owners and applies the
 ## entity properties. Returns [param entity_node], or null when there is no node or no parent.
 func attach_entity(entity_node: Node, entity_data: _EntityData, parent: Node, scene_root: Node) -> Node:
 	if not entity_node:

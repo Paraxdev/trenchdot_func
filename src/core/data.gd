@@ -31,23 +31,23 @@ class FaceData extends RefCounted:
 	var uv_axes: PackedVector3Array = []
 	## Raw plane data parsed from the map file using the id Tech coordinate system.
 	var plane: Plane
-	## TrenchDot: exact face polygon from the editor (id space, scaled). Used instead of plane clipping when set.
+	## Exact face polygon from the editor (id space, scaled). Used instead of plane clipping when set.
 	var exact_vertices: PackedVector3Array = []
-	## TrenchDot: free form per face properties (collision layers, smoothing groups).
+	## Free form per face properties (collision layers, smoothing groups).
 	var props: Dictionary = {}
-	## TrenchDot: vertex paint, one color per entry of [member vertices] (alpha is the blend weight).
+	## Vertex paint, one color per entry of [member vertices] (alpha is the blend weight).
 	var vertex_colors: PackedColorArray = []
-	## TrenchDot displacement surface (id space, scaled). Empty for regular faces.
+	## Displacement surface (id space, scaled). Empty for regular faces.
 	var disp_vertices: PackedVector3Array = []
 	## Flat positions of the displacement grid, used for texture coordinates.
 	var disp_base: PackedVector3Array = []
 	var disp_normals: PackedVector3Array = []
 	var disp_indices: PackedInt32Array = []
 	var disp_alphas: PackedFloat32Array = []
-	## TrenchDot mesh faces: explicit texture coordinates and vertex colors per surface vertex.
+	## Mesh faces: explicit texture coordinates and vertex colors per surface vertex.
 	var disp_uvs: PackedVector2Array = []
 	var disp_colors: PackedColorArray = []
-	## TrenchDot: covered by a coplanar face of another solid, left out of the visual mesh but kept for collision.
+	## Covered by a coplanar face of another solid, left out of the visual mesh but kept for collision.
 	var render_hidden: bool = false
 
 	func is_displacement() -> bool:
@@ -109,15 +109,15 @@ class BrushData extends RefCounted:
 	## [code]true[/code] if this brush is completely covered in the [i]Origin[/i] texture defined in [FuncGodotMapSettings].
 	## Determined during [FuncGodotParser] and utilized during [FuncGodotGeometryGenerator].
 	var origin: bool = false
-	## TrenchDot: faces carry [member FaceData.exact_vertices], so no hyperplane clipping is needed.
+	## Faces carry [member FaceData.exact_vertices], so no hyperplane clipping is needed.
 	var exact: bool = false
-	## TrenchDot: brush has displacement faces. Only those become geometry, like in Hammer.
+	## Brush has displacement faces. Only those become geometry, like in Hammer.
 	var has_disp: bool = false
-	## TrenchDot: the brush is a free form mesh whose faces are all custom surfaces.
+	## The brush is a free form mesh whose faces are all custom surfaces.
 	var is_mesh: bool = false
-	## TrenchDot: false for open meshes (sheets with border edges), brushes are always closed.
+	## False for open meshes (sheets with border edges), brushes are always closed.
 	var closed: bool = true
-	## TrenchDot: the map node id, older nodes win when coplanar faces overlap.
+	## The map node id, older nodes win when coplanar faces overlap.
 	var node_id: int = 0
 
 ## Data struct representing a map layer or group. 
@@ -162,7 +162,7 @@ class EntityData extends RefCounted:
 	var mesh_metadata: Dictionary = {}
 	## A collection of collision shape resources generated during the geometry generation stage and applied during the entity assembly stage.
 	var shapes: Array[Shape3D] = []
-	## TrenchDot fork: shape data computed on worker threads. Shape resources are created from it on the main thread,
+	## Shape data computed on worker threads. Shape resources are created from it on the main thread,
 	## because creating physics shapes concurrently from several threads corrupts physics server state.
 	var pending_convex_points: Array[PackedVector3Array] = []
 	var pending_concave_faces: PackedVector3Array = []
@@ -172,11 +172,11 @@ class EntityData extends RefCounted:
 	var occluder_instance: OccluderInstance3D = null
 	## True global position of the entity's generated node that the mesh's vertices are offset by during the geometry generation stage.
 	var origin: Vector3 = Vector3.ZERO
-	## TrenchDot: Hammer style I/O connections ({output, target, input, parameter, delay, times}).
+	## Hammer style I/O connections ({output, target, input, parameter, delay, times}).
 	var outputs: Array[Dictionary] = []
 	## Node generated for this entity during assembly.
 	var node: Node = null
-	## TrenchDot: the map node id, written to the generated node for live updates. -1 outside .tdm maps.
+	## The map node id, written to the generated node for live updates. -1 for entities made without one.
 	var node_id: int = -1
 
 	## Checks the entity's FGD resource definition, returning whether the Solid Class has a [MeshInstance3D] built for it.
@@ -224,7 +224,7 @@ class VertexGroupData:
 class ParseData:
 	var entities: Array[EntityData] = []
 	var groups: Array[GroupData] = []
-	## TrenchDot heightmap terrains: {"data": Dictionary, "offset": Vector3 (map units), "group": GroupData}.
+	## Heightmap terrains: {"data": Dictionary, "offset": Vector3 (map units), "group": GroupData}.
 	var terrains: Array[Dictionary] = []
-	## TrenchDot scatter sets: {"data": Dictionary, "xform": Transform3D (map units), "group": GroupData, "id": int}.
+	## Scatter sets: {"data": Dictionary, "xform": Transform3D (map units), "group": GroupData, "id": int}.
 	var scatters: Array[Dictionary] = []

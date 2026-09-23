@@ -30,7 +30,7 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 	var map = TrenchDotTdmFile.load_map(map_file)
 	return parse_tdm(map, map_settings, map_file) if map != null else _ParseData.new()
 
-## TrenchDot: parses a .tdm map given as text or as already parsed JSON, without reading the file.
+## Parses a .tdm map given as text or as already parsed JSON, without reading the file.
 ## [param source_path] resolves relative prefab paths.
 func parse_tdm(map: Variant, map_settings: FuncGodotMapSettings, source_path: String) -> _ParseData:
 	var json: Variant = JSON.parse_string(map) if map is String else map
@@ -54,7 +54,7 @@ func post_process(parse_data: _ParseData, map_settings: FuncGodotMapSettings) ->
 	
 	var entities_data: Array[_EntityData] = parse_data.entities
 	var entity_defs: Dictionary[String, FuncGodotFGDEntityClass] = map_settings.entity_fgd.get_entity_definitions()
-	# TrenchDot: C# classes marked [TrenchDotEntity] define entities without FGD resources.
+	# C# classes marked [TrenchDotEntity] define entities without FGD resources.
 	if parse_data.entities.any(func(e): return not str(e.properties.get("classname", "")) in entity_defs):
 		var csharp := TrenchDotCSharp.definitions()
 		for classname in csharp:
@@ -200,7 +200,6 @@ func post_process(parse_data: _ParseData, map_settings: FuncGodotMapSettings) ->
 						properties[property] = prop_string
 		
 		# Retrieve default properties.
-		# TrenchDot: the caches were never filled, so every entity walked its definition's base classes again.
 		# Keyed by definition, the default point and solid classes share an empty classname.
 		if not prop_defaults_cache.has(def):
 			prop_defaults_cache[def] = def.retrieve_all_class_properties()

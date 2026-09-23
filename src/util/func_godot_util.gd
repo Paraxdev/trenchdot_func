@@ -150,7 +150,7 @@ static func build_base_material(map_settings: FuncGodotMapSettings, material: Ba
 						material.set_texture(_pbr_textures[i], load(pbr))
 						break
 
-## TrenchDot: the world size in map units one repeat of the material's texture covers, from its
+## The world size in map units one repeat of the material's texture covers, from its
 ## [code]texture_size[/code] metadata, or [constant Vector2.ZERO] when it has none. Photos are often a thousand
 ## pixels wide or more, so dividing UVs by their pixel size would stretch them over dozens of meters.
 static func material_texture_size(material: Material) -> Vector2:
@@ -170,7 +170,7 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 	var texture_materials: Dictionary[String, Material] = {}
 	var texture_sizes: Dictionary[String, Vector2] = {}
 	
-	# TrenchDot: decal variants are made from their base material once every base is loaded.
+	# Decal variants are made from their base material once every base is loaded.
 	var decals: Array[String] = []
 	for entity in entity_data:
 		if not entity.is_visual():
@@ -188,7 +188,6 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 					continue
 				if texture_materials.has(texture_name):
 					continue
-				# TrenchDot: two materials blended by vertex alpha.
 				if TrenchDotBlend.is_blend(texture_name):
 					var blend: Array = TrenchDotBlend.build(texture_name, map_settings)
 					texture_materials[texture_name] = blend[0]

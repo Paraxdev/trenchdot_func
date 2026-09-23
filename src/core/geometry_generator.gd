@@ -132,7 +132,7 @@ func determine_entity_origins(entity_index: int) -> void:
 	else:
 		origin_type = entity.definition.origin_type
 	
-	# TrenchDot: worldspawn by classname, so entity lists built without it (live updates) keep brush entity origins.
+	# Worldspawn by classname, so entity lists built without it (live updates) keep brush entity origins.
 	if entity.properties.get("classname", "") == "worldspawn":
 		entity.origin = Vector3.ZERO
 		return
@@ -212,7 +212,7 @@ func wind_entity_faces(entity_index: int) -> void:
 			var unwound := face.vertices.duplicate() if not face.vertex_colors.is_empty() else PackedVector3Array()
 			face.wind()
 			face.index_vertices()
-			# TrenchDot: vertex colors follow their vertices through the re-sort.
+			# Vertex colors follow their vertices through the re-sort.
 			if not unwound.is_empty():
 				var colors := PackedColorArray()
 				for v in face.vertices:
@@ -365,7 +365,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 		arrays[Mesh.ARRAY_TANGENT] 	= PackedFloat32Array()
 		arrays[Mesh.ARRAY_TEX_UV] 	= PackedVector2Array()
 		arrays[Mesh.ARRAY_INDEX] 	= PackedInt32Array()
-		# TrenchDot: blend surfaces always carry colors, unpainted corners default to the base texture.
+		# Blend surfaces always carry colors, unpainted corners default to the base texture.
 		var use_colors := faces.any(func(f: _FaceData) -> bool: return f.has_colors()) or TrenchDotBlend.is_blend(texture_name)
 		if use_colors:
 			arrays[Mesh.ARRAY_COLOR] = PackedColorArray()
@@ -563,7 +563,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 	surfaces = {}
 	
 	if entity.is_collision_convex():
-		# TrenchDot: displacement surfaces are not convex, they collide as a trimesh next to the brush hulls.
+		# Displacement surfaces are not convex, they collide as a trimesh next to the brush hulls.
 		if concave_vertices.size():
 			entity.pending_concave_faces = concave_vertices
 		for b in entity.brushes:
@@ -642,7 +642,7 @@ func build(build_flags: int, entities: Array[_EntityData]) -> Error:
 	TrenchDotFaceCull.apply(entity_data, map_settings, texture_materials)
 
 	declare_step.emit("Generating surfaces")
-	# TrenchDot fork: surfaces create ArrayMesh resources, which is not safe from several threads at once
+	# Surfaces create ArrayMesh resources, which is not safe from several threads at once
 	# (crashes at shutdown with more than one brush entity), so this step runs on the calling thread.
 	for entity_index in entity_count:
 		generate_entity_surfaces(entity_index)

@@ -237,7 +237,7 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 	surfaces.resize(chunks.size())
 	var build_chunk := func(c: int) -> void:
 		surfaces[c] = _chunk_arrays(chunks[c], chunk_cells, res, cell, heights, splat, holes)
-	# TrenchDot: chunk arrays are plain data, only the ArrayMesh resources are created on this thread.
+	# Chunk arrays are plain data, only the ArrayMesh resources are created on this thread.
 	if TrenchDotBuild.threaded() and chunks.size() > 1:
 		var task := WorkerThreadPool.add_group_task(build_chunk, chunks.size(), -1, false, "Build TrenchDot terrain chunks")
 		WorkerThreadPool.wait_for_group_task_completion(task)
