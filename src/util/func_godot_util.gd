@@ -267,10 +267,11 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 				else: # No default material exists
 					printerr("Error: No default material found in map settings")
 	
+	var decal_shaders := {}
 	for decal in decals:
 		var base := TrenchDotDecalMesh.base(decal)
 		if texture_materials.has(base):
-			texture_materials[decal] = TrenchDotDecalMesh.material(texture_materials[base])
+			texture_materials[decal] = TrenchDotDecalMesh.material(texture_materials[base], decal_shaders)
 		if texture_sizes.has(base):
 			texture_sizes[decal] = texture_sizes[base]
 	
