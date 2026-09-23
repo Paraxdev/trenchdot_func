@@ -9,6 +9,8 @@ var wal_import_plugin: Quake2WalImportPlugin = null
 
 #var func_godot_map_progress_bar: Control = null
 var edited_object_ref: WeakRef = weakref(null)
+var trenchdot: TrenchDotEditorIntegration = null
+var bbmodel_import_plugin: TrenchDotBBModelImportPlugin = null
 
 func _get_plugin_name() -> String:
 	return "FuncGodot"
@@ -34,13 +36,21 @@ func _enter_tree() -> void:
 	add_import_plugin(palette_import_plugin)
 	add_import_plugin(wad_import_plugin)
 	add_import_plugin(wal_import_plugin)
-	
+	bbmodel_import_plugin = TrenchDotBBModelImportPlugin.new()
+	add_import_plugin(bbmodel_import_plugin)
+
 	#func_godot_map_progress_bar = create_func_godot_map_progress_bar()
 	#func_godot_map_progress_bar.set_visible(false)
 	#add_control_to_container(EditorPlugin.CONTAINER_INSPECTOR_BOTTOM, func_godot_map_progress_bar)
 	
 	add_custom_type("FuncGodotMap", "Node3D", preload("res://addons/func_godot/src/map/func_godot_map.gd"), null)
-	
+
+	trenchdot = TrenchDotEditorIntegration.new()
+	trenchdot.name = "TrenchDot"
+	trenchdot.plugin = self
+	add_child(trenchdot)
+	add_tool_menu_item("TrenchDot: Export Game Config", trenchdot.export_game_config)
+
 	# Default Map Settings
 	if not ProjectSettings.has_setting("func_godot/default_map_settings"):
 		ProjectSettings.set_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres")
@@ -77,9 +87,16 @@ func _enter_tree() -> void:
 		ProjectSettings.set_initial_value("func_godot/model_point_class_save_path", "")
 
 func _exit_tree() -> void:
+	remove_tool_menu_item("TrenchDot: Export Game Config")
+	if trenchdot:
+		trenchdot.queue_free()
+		trenchdot = null
 	remove_custom_type("FuncGodotMap")
 	remove_import_plugin(map_import_plugin)
 	remove_import_plugin(palette_import_plugin)
+	if bbmodel_import_plugin:
+		remove_import_plugin(bbmodel_import_plugin)
+		bbmodel_import_plugin = null
 	if wad_import_plugin:
 		remove_import_plugin(wad_import_plugin)
 	if wal_import_plugin:

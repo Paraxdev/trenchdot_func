@@ -107,6 +107,8 @@ func generate_base_winding(plane: Plane) -> PackedVector3Array:
 	return winding
 
 func generate_face_vertices(brush: _BrushData, face_index: int, vertex_merge_distance: float = 0.0) -> PackedVector3Array:
+	if brush.exact and not brush.faces[face_index].exact_vertices.is_empty():
+		return brush.faces[face_index].exact_vertices.duplicate()
 	var plane: Plane = brush.faces[face_index].plane
 	
 	# Generate initial square polygon to clip other planes against
@@ -173,7 +175,8 @@ func determine_entity_origins(entity_index: int) -> void:
 	else:
 		origin_type = entity.definition.origin_type
 	
-	if entity_index == 0:
+	# TrenchDot: worldspawn by classname, so entity lists built without it (live updates) keep brush entity origins.
+	if entity.properties.get("classname", "") == "worldspawn":
 		entity.origin = Vector3.ZERO
 		return
 	
@@ -249,8 +252,16 @@ func wind_entity_faces(entity_index: int) -> void:
 	for brush in entity.brushes:
 		for face in brush.faces:
 			# Faces should already be wound from the new generation process, but this should be tested further first.
+			var unwound := face.vertices.duplicate() if not face.vertex_colors.is_empty() else PackedVector3Array()
 			face.wind()
 			face.index_vertices()
+			# TrenchDot: vertex colors follow their vertices through the re-sort.
+			if not unwound.is_empty():
+				var colors := PackedColorArray()
+				for v in face.vertices:
+					var k := unwound.find(v)
+					colors.append(face.vertex_colors[k] if k >= 0 and k < face.vertex_colors.size() else Color(1, 1, 1, 0))
+				face.vertex_colors = colors
 
 func smooth_entity_vertices(entity_index: int) -> void:
 	var entity: _EntityData = entity_data[entity_index]
@@ -359,7 +370,9 @@ func generate_entity_surfaces(entity_index: int) -> void:
 		for face in brush.faces:
 			if is_skip(face) or is_origin(face):
 				continue
-			
+			if brush.has_disp and not face.is_displacement():
+				continue
+
 			if not surfaces.has(face.texture):
 				surfaces[face.texture] = []
 			surfaces[face.texture].append(face)
@@ -395,7 +408,11 @@ func generate_entity_surfaces(entity_index: int) -> void:
 		arrays[Mesh.ARRAY_TANGENT] 	= PackedFloat32Array()
 		arrays[Mesh.ARRAY_TEX_UV] 	= PackedVector2Array()
 		arrays[Mesh.ARRAY_INDEX] 	= PackedInt32Array()
-		
+		# TrenchDot: blend surfaces always carry colors, unpainted corners default to the base texture.
+		var use_colors := faces.any(func(f: _FaceData) -> bool: return f.has_colors()) or TrenchDotBlend.is_blend(texture_name)
+		if use_colors:
+			arrays[Mesh.ARRAY_COLOR] = PackedColorArray()
+
 		# Begin fresh index offset for this subarray
 		var index_offset: int = 0
 		# build lookup table if we're doing cull interior faces
@@ -479,6 +496,15 @@ func generate_entity_surfaces(entity_index: int) -> void:
 					continue;
 			#endregion
 			
+			if face.is_displacement():
+				var tx_size: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * map_settings.inverse_scale_factor)
+				if build_concave or entity.is_collision_convex():
+					concave_vertices.append_array(TrenchDotDisplacement.triangles(face, op_entity_ogl_xf))
+				if is_clip(face) or face.render_hidden:
+					continue
+				index_offset += TrenchDotDisplacement.append_surface(arrays, face, op_entity_ogl_xf, tx_size, index_offset, use_colors)
+				continue
+
 			# Create trimesh points regardless of texture
 			if build_concave:
 				var tris: PackedVector3Array
@@ -492,7 +518,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				concave_vertices.append_array(tris)
 				
 			# Do not generate visuals for clip textures
-			if is_clip(face):
+			if is_clip(face) or face.render_hidden:
 				continue
 			
 			# Handle metadata for this face
@@ -534,7 +560,9 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				
 				for j in 4:
 					arrays[ArrayMesh.ARRAY_TANGENT].append(face.tangents[(i * 4) + j])
-			
+				if use_colors:
+					arrays[ArrayMesh.ARRAY_COLOR].append(face.vertex_colors[i] if i < face.vertex_colors.size() else Color(1, 1, 1, 0))
+
 			# Create offset indices for the visual mesh
 			var op_shift_index: Callable = (func(a: int) -> int: return a + index_offset)
 			arrays[ArrayMesh.ARRAY_INDEX].append_array(Array(face.indices).map(op_shift_index))
@@ -578,18 +606,18 @@ func generate_entity_surfaces(entity_index: int) -> void:
 	surfaces = {}
 	
 	if entity.is_collision_convex():
-		var sh: ConvexPolygonShape3D
+		# TrenchDot: displacement surfaces are not convex, they collide as a trimesh next to the brush hulls.
+		if concave_vertices.size():
+			entity.pending_concave_faces = concave_vertices
 		for b in entity.brushes:
-			if b.planes.is_empty() or b.origin:
+			if b.planes.is_empty() or b.origin or b.has_disp:
 				continue
-			
-			var points := Array(Geometry3D.compute_convex_mesh_points(b.planes)).map(op_entity_ogl_xf)
+
+			var points := PackedVector3Array(Array(Geometry3D.compute_convex_mesh_points(b.planes)).map(op_entity_ogl_xf))
 			if points.is_empty():
 				continue
-			
-			sh = ConvexPolygonShape3D.new()
-			sh.points = points
-			entity.shapes.append(sh)
+
+			entity.pending_convex_points.append(points)
 	
 			if def.add_collision_shape_to_face_indices_metadata:
 				# convex collision has one shape per brush, so collect the
@@ -601,9 +629,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				shape_to_face_metadata.append(face_indices_array)
 
 	elif build_concave and concave_vertices.size():
-		var sh := ConcavePolygonShape3D.new()
-		sh.set_faces(concave_vertices)
-		entity.shapes.append(sh)
+		entity.pending_concave_faces = concave_vertices
 		
 		if def.add_collision_shape_to_face_indices_metadata:
 			# for concave collision the shape will always represent every face
@@ -655,10 +681,28 @@ func build(build_flags: int, entities: Array[_EntityData]) -> Error:
 	#	task_id = WorkerThreadPool.add_group_task(smooth_entity_vertices, entity_count, -1, false, "Smooth Entities")
 	#	WorkerThreadPool.wait_for_group_task_completion(task_id)
 	
+	declare_step.emit("Hiding covered coplanar faces")
+	TrenchDotFaceCull.apply(entity_data, map_settings, texture_materials)
+
 	declare_step.emit("Generating surfaces")
-	task_id = WorkerThreadPool.add_group_task(generate_entity_surfaces, entity_count, -1, false, "Generate Surfaces")
-	WorkerThreadPool.wait_for_group_task_completion(task_id)
-	
+	# TrenchDot fork: surfaces create ArrayMesh resources, which is not safe from several threads at once
+	# (crashes at shutdown with more than one brush entity), so this step runs on the calling thread.
+	for entity_index in entity_count:
+		generate_entity_surfaces(entity_index)
+
+	declare_step.emit("Creating collision shapes")
+	for entity in entity_data:
+		for points in entity.pending_convex_points:
+			var convex := ConvexPolygonShape3D.new()
+			convex.points = points
+			entity.shapes.append(convex)
+		if entity.pending_concave_faces.size():
+			var concave := ConcavePolygonShape3D.new()
+			concave.set_faces(entity.pending_concave_faces)
+			entity.shapes.append(concave)
+		entity.pending_convex_points.clear()
+		entity.pending_concave_faces = PackedVector3Array()
+
 	if build_flags & FuncGodotMap.BuildFlags.UNWRAP_UV2:
 		declare_step.emit("Unwrapping UV2s")
 		var texel_size: float = map_settings.uv_unwrap_texel_size * map_settings.scale_factor

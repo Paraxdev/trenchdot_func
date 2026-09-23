@@ -81,6 +81,11 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 			return parse_data
 		map_file = ResourceUID.get_id_path(uid)
 	
+	# TrenchDot: .tdm files are read whole, the binary container or the JSON of older maps.
+	if map_file.get_extension().to_lower() == "tdm":
+		var map = TrenchDotTdmFile.load_map(map_file)
+		return parse_tdm(map, map_settings, map_file) if map != null else parse_data
+
 	# Open the map file
 	var file: FileAccess = FileAccess.open(map_file, FileAccess.READ)
 	if not file:
@@ -120,7 +125,21 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 	if parse_data == null:
 		printerr("Error: Failed to parse map file (%s)" % map_file)
 		return _ParseData.new()
-	
+
+	return post_process(parse_data, map_settings)
+
+## TrenchDot: parses a .tdm map given as text or as already parsed JSON, without reading the file.
+## [param source_path] resolves relative prefab paths.
+func parse_tdm(map: Variant, map_settings: FuncGodotMapSettings, source_path: String) -> _ParseData:
+	var json: Variant = JSON.parse_string(map) if map is String else map
+	var parse_data := TrenchDotParser.parse_dict(json, map_settings, _ParseData.new(), source_path)
+	if parse_data == null:
+		printerr("Error: Failed to parse map (%s)" % source_path)
+		return _ParseData.new()
+	return post_process(parse_data, map_settings)
+
+## Links groups, assigns entity definitions, converts property types and drops omitted groups.
+func post_process(parse_data: _ParseData, map_settings: FuncGodotMapSettings) -> _ParseData:
 	# Determine group hierarchy
 	declare_step.emit("Determining groups hierarchy")
 	var groups_data: Array[_GroupData] = parse_data.groups
@@ -133,6 +152,12 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 	
 	var entities_data: Array[_EntityData] = parse_data.entities
 	var entity_defs: Dictionary[String, FuncGodotFGDEntityClass] = map_settings.entity_fgd.get_entity_definitions()
+	# TrenchDot: C# classes marked [TrenchDotEntity] define entities without FGD resources.
+	if parse_data.entities.any(func(e): return not str(e.properties.get("classname", "")) in entity_defs):
+		var csharp := TrenchDotCSharp.definitions()
+		for classname in csharp:
+			if not classname in entity_defs:
+				entity_defs[classname] = csharp[classname]
 	var missing_defs: PackedStringArray = []
 	
 	var default_point_class := FuncGodotFGDPointClass.new()
@@ -146,9 +171,9 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 	
 	declare_step.emit("Checking entity omission, definition status, and property types")
 	
-	# Cache retrieved class property defaults. Format is Dictionary[Classname, Properties].
-	var prop_defaults_cache: Dictionary[String, Dictionary] = {}
-	var prop_descriptions_cache: Dictionary[String, Dictionary] = {}
+	# Cache retrieved class property defaults. Format is Dictionary[Definition, Properties].
+	var prop_defaults_cache: Dictionary = {}
+	var prop_descriptions_cache: Dictionary = {}
 	
 	for i in range(entities_data.size() - 1, -1, -1):
 		var entity: _EntityData = entities_data[i]
@@ -273,8 +298,13 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 						properties[property] = prop_string
 		
 		# Retrieve default properties.
-		var def_properties: Dictionary[String, Variant] = prop_defaults_cache.get(def.classname, def.retrieve_all_class_properties())
-		var def_descriptions: Dictionary[String, Variant] = prop_descriptions_cache.get(def.classname, def.retrieve_all_class_property_descriptions())
+		# TrenchDot: the caches were never filled, so every entity walked its definition's base classes again.
+		# Keyed by definition, the default point and solid classes share an empty classname.
+		if not prop_defaults_cache.has(def):
+			prop_defaults_cache[def] = def.retrieve_all_class_properties()
+			prop_descriptions_cache[def] = def.retrieve_all_class_property_descriptions()
+		var def_properties: Dictionary[String, Variant] = prop_defaults_cache[def]
+		var def_descriptions: Dictionary[String, Variant] = prop_descriptions_cache[def]
 		
 		# Assign properties not defined with defaults from the entity definition
 		for property in def_properties:

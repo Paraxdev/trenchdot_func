@@ -27,11 +27,14 @@ signal build_complete
 @export_tool_button("Clear Map","Skeleton3D") var _clear_func: Callable = clear_children
 
 @export_category("Map")
-## Local path to MAP or VMF file to build a scene from.
-@export_file("*.map","*.vmf") var local_map_file: String = ""
+## Local path to TDM, MAP or VMF file to build a scene from.
+@export_file("*.tdm","*.map","*.vmf") var local_map_file: String = ""
 
-## Global path to MAP or VMF file to build a scene from. Overrides [member FuncGodotMap.local_map_file].
-@export_global_file("*.map","*.vmf") var global_map_file: String = ""
+## Global path to TDM, MAP or VMF file to build a scene from. Overrides [member FuncGodotMap.local_map_file].
+@export_global_file("*.tdm","*.map","*.vmf") var global_map_file: String = ""
+
+## TrenchDot: rebuild automatically when the TrenchDot editor reports that this map was saved (live link).
+@export var auto_rebuild_on_save: bool = true
 
 # Map path used by code. Do it this way to support both global and local paths.
 var _map_file_internal: String = ""
@@ -56,11 +59,16 @@ func fail_build(reason: String, notify: bool = false) -> void:
 		build_failed.emit()
 
 ## Frees all children of the map node.[br]
-## [b][color=yellow]Warning:[/color][/b] This does not distinguish between nodes generated in the FuncGodot build process and other user created nodes.
+## TrenchDot: except [TrenchDotOverlay] nodes and nodes in the [code]trenchdot_keep[/code] group, which keep their
+## place and node instances. Any other user created node directly under the map is freed with the generated ones.
 func clear_children() -> void:
 	for child in get_children():
+		if TrenchDotOverlay.is_kept(child):
+			continue
 		remove_child(child)
 		child.queue_free()
+	if has_meta(TrenchDotIO.CACHE_META):
+		remove_meta(TrenchDotIO.CACHE_META)
 	if Engine.is_editor_hint():
 		Engine.get_singleton(&"EditorInterface").mark_scene_as_unsaved()
 
@@ -92,28 +100,44 @@ func verify() -> Error:
 ## First cleans the map node of any children, then creates a [FuncGodotParser], [FuncGodotGeometryGenerator] 
 ## and [FuncGodotEntityAssembler] to parse and generate the map. 
 func build() -> void:
+	_build("")
+
+## TrenchDot: builds the .tdm map from [param text] instead of its file, e.g. unsaved edits sent by the TrenchDot editor.
+## The file path is still used to resolve prefabs.
+func build_from_text(text: String) -> void:
+	_build(text)
+
+func _build(text: String) -> void:
 	var time_elapsed: float = Time.get_ticks_msec()
-	
+
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		FuncGodotUtil.print_profile_info("Building...", _SIGNATURE)
 
 	clear_children()
-	
+
 	var verify_err: Error = verify()
 	if verify_err != OK:
 		fail_build("Verification failed: %s. Aborting map build" % error_string(verify_err), true)
 		return
-	
+
 	if not map_settings:
 		push_warning("Map assembler does not have a map settings provided and will use default map settings.")
 		load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres"))
-	
+
 	# Parse and collect map data
 	var parser := FuncGodotParser.new()
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nPARSER")
 		parser.declare_step.connect(FuncGodotUtil.print_profile_info.bind(parser._SIGNATURE))
-	var parse_data: FuncGodotData.ParseData = parser.parse_map_data(_map_file_internal, map_settings)
+	var parse_data: FuncGodotData.ParseData
+	var is_tdm := _map_file_internal.get_extension().to_lower() == "tdm"
+	if text != "" and is_tdm:
+		parse_data = parser.parse_tdm(text, map_settings, _map_file_internal)
+	else:
+		parse_data = parser.parse_map_data(_map_file_internal, map_settings)
+	# TrenchDot: lets a live session tell whether the scene still matches the map it was built from.
+	if is_tdm and (text != "" or Engine.is_editor_hint()):
+		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))
 	
 	if parse_data.entities.is_empty():
 		return	# Already printed failure message in parser, just return here
@@ -142,7 +166,22 @@ func build() -> void:
 		print("\nENTITY ASSEMBLER")
 		assembler.declare_step.connect(FuncGodotUtil.print_profile_info.bind(assembler._SIGNATURE))
 	assembler.build(self, entities, groups)
-	
+
+	# TrenchDot: heightmap terrains are built as their own nodes after the entities.
+	TrenchDotTerrain.build_all(self, parse_data.terrains, map_settings)
+	# TrenchDot: scatter sets (trees, rocks, foliage) as MultiMesh and shared collision.
+	TrenchDotScatter.build_all(self, parse_data.scatters, map_settings)
+	# TrenchDot: sky, fog and sun from worldspawn keys, the same values the editor's lit preview uses.
+	if is_tdm:
+		TrenchDotEnvironment.build(self, entities[0].properties)
+	# TrenchDot: the chunk streamer goes in last, it groups everything built above.
+	var streamer := TrenchDotStreamer.build(self, entities[0].properties, map_settings)
+	if streamer:
+		streamer.rebuild()
+
+	# TrenchDot: overlays and their anchors catch up with the rebuilt entities.
+	TrenchDotOverlay.notify_built(self)
+
 	time_elapsed = Time.get_ticks_msec() - time_elapsed
 
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:

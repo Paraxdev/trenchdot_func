@@ -163,7 +163,7 @@ static func is_origin(texture: String, map_settings: FuncGodotMapSettings) -> bo
 ## Filters faces textured with any of the tool textures during the geometry generation step of the build process.
 static func filter_face(texture: String, map_settings: FuncGodotMapSettings) -> bool:
 	if map_settings:
-		texture = texture.to_lower()
+		texture = TrenchDotDecalMesh.base(texture).to_lower()
 		if (texture == map_settings.skip_texture
 			or texture == map_settings.clip_texture
 		 	or texture == map_settings.origin_texture
@@ -217,6 +217,19 @@ static func build_base_material(map_settings: FuncGodotMapSettings, material: Ba
 						material.set_texture(_pbr_textures[i], load(pbr))
 						break
 
+## TrenchDot: the world size in map units one repeat of the material's texture covers, from its
+## [code]texture_size[/code] metadata, or [constant Vector2.ZERO] when it has none. Photos are often a thousand
+## pixels wide or more, so dividing UVs by their pixel size would stretch them over dozens of meters.
+static func material_texture_size(material: Material) -> Vector2:
+	if not material or not material.has_meta("texture_size"):
+		return Vector2.ZERO
+	var size = material.get_meta("texture_size")
+	if size is Vector2 or size is Vector2i:
+		return Vector2(size) if size.x > 0 and size.y > 0 else Vector2.ZERO
+	if (size is float or size is int) and size > 0:
+		return Vector2.ONE * float(size)
+	return Vector2.ZERO
+
 ## Builds both materials and sizes dictionaries for use in the geometry generation step of the build process. 
 ## Both dictionaries use texture names as keys. The materials dictionary uses [Material] as values, 
 ## while the sizes dictionary saves the albedo texture sizes to aid in UV mapping.
@@ -230,6 +243,8 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 		if wad and not wad in wad_resources:
 			wad_resources.append(wad)
 	
+	# TrenchDot: decal variants are made from their base material once every base is loaded.
+	var decals: Array[String] = []
 	for entity in entity_data:
 		if not entity.is_visual():
 			continue
@@ -237,12 +252,22 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 		for brush in entity.brushes:
 			for face in brush.faces:
 				var texture_name: String = face.texture
+				if TrenchDotDecalMesh.is_decal(texture_name):
+					if not texture_name in decals:
+						decals.append(texture_name)
+					texture_name = TrenchDotDecalMesh.base(texture_name)
 				
 				if filter_face(texture_name, map_settings):
 					continue
 				if texture_materials.has(texture_name):
 					continue
-				
+				# TrenchDot: two materials blended by vertex alpha.
+				if TrenchDotBlend.is_blend(texture_name):
+					var blend: Array = TrenchDotBlend.build(texture_name, map_settings, wad_resources)
+					texture_materials[texture_name] = blend[0]
+					texture_sizes[texture_name] = blend[1]
+					continue
+
 				var material_path: String = map_settings.base_material_dir if not map_settings.base_material_dir.is_empty() else map_settings.base_texture_dir
 				material_path = material_path.path_join(texture_name) + "." + map_settings.material_file_extension
 				material_path = material_path.replace("*", "")
@@ -264,6 +289,9 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 							texture_sizes[texture_name] = texture.get_size()
 					if not texture_sizes.has(texture_name):
 						texture_sizes[texture_name] = Vector2.ONE * map_settings.inverse_scale_factor
+					var world_size := material_texture_size(material)
+					if world_size != Vector2.ZERO:
+						texture_sizes[texture_name] = world_size
 				
 				# Material generation
 				elif map_settings.default_material:
@@ -304,6 +332,13 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 					texture_materials[texture_name] = material
 				else: # No default material exists
 					printerr("Error: No default material found in map settings")
+	
+	for decal in decals:
+		var base := TrenchDotDecalMesh.base(decal)
+		if texture_materials.has(base):
+			texture_materials[decal] = TrenchDotDecalMesh.material(texture_materials[base])
+		if texture_sizes.has(base):
+			texture_sizes[decal] = texture_sizes[base]
 	
 	return [texture_materials, texture_sizes]
 
