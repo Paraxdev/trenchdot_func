@@ -25,6 +25,9 @@ signal broken
 var _hp := 30.0
 var _broken := false
 
+## Model paths already warned about, so a hundred props on one wrong path warn once.
+static var _warned_models := {}
+
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	model = str(props.get("model", model))
 	if props.has("size"):
@@ -60,6 +63,9 @@ func _build_body() -> void:
 		if packed:
 			add_child(packed.instantiate())
 			return
+	elif model != "" and not TrenchDotProp.quiet_missing and not _warned_models.has(model):
+		_warned_models[model] = true
+		push_warning("[TrenchDot] prop_physics model %s not found, %s and any other prop using it draw a box" % [model, name])
 	var mesh := MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
 	box_mesh.size = full

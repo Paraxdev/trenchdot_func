@@ -14,7 +14,8 @@ const _SIGNATURE: String = "[MAP]"
 enum BuildFlags {
 	UNWRAP_UV2 			= 1 << 0,	## Unwrap UV2s during geometry generation for lightmap baking.
 	SHOW_PROFILE_INFO 	= 1 << 1,	## Print build step information during build process.
-	DISABLE_SMOOTHING	= 1 << 2	## Force disable processing of vertex normal smooth shading.
+	DISABLE_SMOOTHING	= 1 << 2,	## Force disable processing of vertex normal smooth shading.
+	PRINT_REPORT		= 1 << 3	## Print the [member build_report] after each build.
 }
 
 ## Emitted when the build process fails.
@@ -47,7 +48,7 @@ var _map_file_internal: String = ""
 
 @export_category("Build")
 ## [enum BuildFlags] that can affect certain aspects of the build process.
-@export_flags("Unwrap UV2:1", "Show Profiling Info:2", "Disable Smooth Shading:4") var build_flags: int = 0
+@export_flags("Unwrap UV2:1", "Show Profiling Info:2", "Disable Smooth Shading:4", "Print Build Report:8") var build_flags: int = 0
 
 ## The hyperplane is an initial plane that all geometry faces are cut from, like a large sheet of marble before a sculptor begins chiseling. 
 ## The hyperplane size would need to be able to cover your map's potential total area.
@@ -60,6 +61,9 @@ var _map_file_internal: String = ""
 ## Turn it off to call [method TrenchDotWarmUp.warm_shaders] yourself, for example once after all maps and the game's
 ## environment are in place. Headless runs skip the drawing and only emit the signal.
 @export var warm_up_shaders: bool = true
+
+## What the last build made and could not find, see [TrenchDotBuildReport]. [method build] returns it too.
+var build_report: Dictionary = {}
 
 func _ready() -> void:
 	if get_child_count() > 0:
@@ -122,17 +126,26 @@ func verify() -> Error:
 
 ## Builds the [member global_map_file]. If not set, builds the [member local_map_file].
 ## First cleans the map node of any children, then creates a [FuncGodotParser], [FuncGodotGeometryGenerator] 
-## and [FuncGodotEntityAssembler] to parse and generate the map. 
-func build() -> void:
-	_build("")
+## and [FuncGodotEntityAssembler] to parse and generate the map. Returns the [member build_report].
+func build() -> Dictionary:
+	return _report(_build(""))
 
 ## Builds the .tdm map from [param text] instead of its file, e.g. unsaved edits sent by the TrenchDot editor.
 ## The file path is still used to resolve prefabs.
-func build_from_text(text: String) -> void:
-	_build(text)
+func build_from_text(text: String) -> Dictionary:
+	return _report(_build(text))
 
-func _build(text: String) -> void:
+func _report(report: TrenchDotBuildReport) -> Dictionary:
+	report.finish()
+	build_report = report.to_dictionary()
+	if build_flags & BuildFlags.PRINT_REPORT:
+		report.print_report()
+	return build_report
+
+func _build(text: String) -> TrenchDotBuildReport:
 	var time_elapsed: float = Time.get_ticks_msec()
+	var report := TrenchDotBuildReport.new(global_map_file if global_map_file != "" else local_map_file)
+	report.step("Clearing the map node")
 
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		FuncGodotUtil.print_profile_info("Building...", _SIGNATURE)
@@ -142,7 +155,8 @@ func _build(text: String) -> void:
 	var verify_err: Error = verify()
 	if verify_err != OK:
 		fail_build("Verification failed: %s. Aborting map build" % error_string(verify_err), true)
-		return
+		report.error = "verification failed: %s" % error_string(verify_err)
+		return report
 
 	if not map_settings:
 		push_warning("Map assembler does not have a map settings provided and will use default map settings.")
@@ -150,6 +164,7 @@ func _build(text: String) -> void:
 
 	# Parse and collect map data
 	var parser := FuncGodotParser.new()
+	parser.declare_step.connect(report.step)
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nPARSER")
 		parser.declare_step.connect(FuncGodotUtil.print_profile_info.bind(parser._SIGNATURE))
@@ -163,7 +178,8 @@ func _build(text: String) -> void:
 		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))
 	
 	if parse_data.entities.is_empty():
-		return	# Already printed failure message in parser, just return here
+		report.error = "the map could not be read"
+		return report	# Already printed failure message in parser, just return here
 	
 	var entities: Array[FuncGodotData.EntityData] = parse_data.entities
 	var groups: Array[FuncGodotData.GroupData] = parse_data.groups
@@ -173,6 +189,7 @@ func _build(text: String) -> void:
 	
 	# Retrieve geometry
 	var generator := FuncGodotGeometryGenerator.new(map_settings, hyperplane_size)
+	generator.declare_step.connect(report.step)
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nGEOMETRY GENERATOR")
 		generator.declare_step.connect(FuncGodotUtil.print_profile_info.bind(generator._SIGNATURE))
@@ -181,24 +198,39 @@ func _build(text: String) -> void:
 	var generate_error := generator.build(build_flags, entities)
 	if generate_error != OK:
 		fail_build("Geometry generation failed: %s" % error_string(generate_error))
-		return
+		report.error = "geometry generation failed: %s" % error_string(generate_error)
+		return report
+	report.check_textures(entities, generator.texture_materials, map_settings)
 
 	# Assemble entities and groups
 	var assembler := FuncGodotEntityAssembler.new(map_settings)
+	assembler.declare_step.connect(report.step)
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nENTITY ASSEMBLER")
 		assembler.declare_step.connect(FuncGodotUtil.print_profile_info.bind(assembler._SIGNATURE))
+	# The report warns once per missing model instead of once per prop.
+	TrenchDotProp.quiet_missing = true
 	assembler.build(self, entities, groups)
+	TrenchDotProp.quiet_missing = false
+	report.check_entities(entities)
+	report.check_targets(entities, self)
 
+	report.step("Building terrains")
 	TrenchDotTerrain.build_all(self, parse_data.terrains, map_settings)
+	report.step("Building scatter sets")
 	TrenchDotScatter.build_all(self, parse_data.scatters, map_settings)
+	report.step("Building the environment")
 	TrenchDotEnvironment.build(self, entities[0].properties)
 	# The chunk streamer goes in last, it groups everything built above.
+	report.step("Building the chunk streamer")
 	var streamer := TrenchDotStreamer.build(self, entities[0].properties, map_settings)
 	if streamer:
 		streamer.rebuild()
 
 	TrenchDotOverlay.notify_built(self)
+	report.finish()
+	report.count_vertices(self)
+	report.warn()
 
 	time_elapsed = Time.get_ticks_msec() - time_elapsed
 
@@ -210,3 +242,4 @@ func _build(text: String) -> void:
 		FuncGodotUtil.print_profile_info("Build complete", _SIGNATURE)
 	build_complete.emit()
 	_warm_up()
+	return report

@@ -8,6 +8,9 @@ class_name TrenchDotProp extends Node3D
 @export var model_node: String = ""
 @export_enum("none", "convex", "trimesh") var collision: String = "convex"
 
+## Set while a [FuncGodotMap] builds, whose report warns once per missing model instead.
+static var quiet_missing := false
+
 func _func_godot_apply_properties(properties: Dictionary) -> void:
 	model = str(properties.get("model", model))
 	model_node = str(properties.get("model_node", model_node)).strip_edges()
@@ -20,7 +23,7 @@ func rebuild() -> void:
 			remove_child(child)
 			child.free()
 	if model == "" or not ResourceLoader.exists(model):
-		if model != "":
+		if model != "" and not quiet_missing:
 			push_warning("[TrenchDot] prop model %s not found" % model)
 		return
 	var scene := load(model) as PackedScene
