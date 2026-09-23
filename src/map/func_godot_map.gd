@@ -125,7 +125,7 @@ func _build(text: String) -> void:
 
 	if not map_settings:
 		push_warning("Map assembler does not have a map settings provided and will use default map settings.")
-		load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres"))
+		map_settings = load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres"))
 
 	# Parse and collect map data
 	var parser := FuncGodotParser.new()
