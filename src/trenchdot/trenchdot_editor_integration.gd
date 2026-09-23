@@ -9,7 +9,8 @@ class_name TrenchDotEditorIntegration extends Node
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds), [code]focus[/code],
 ## [code]export_game_config[/code], and for live mode [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
-## (see [TrenchDotLiveSession]).
+## (see [TrenchDotLiveSession]), and [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
+## a camera, see [TrenchDotCapture]).
 
 const SETTING_CONFIG := "trenchdot/game_config"
 const SETTING_AUTO_EXPORT := "trenchdot/auto_export_game_config"
@@ -142,14 +143,23 @@ func _process(_delta: float) -> void:
 		var split := take_lines(buffer)
 		_buffers[peer] = split[1]
 		for line in split[0]:
-			var reply := handle_message(line)
-			peer.put_data((JSON.stringify(reply) + "\n").to_utf8_buffer())
+			_respond(peer, line)
+
+## Captures answer after a few frames, every other event before this returns.
+func _respond(peer: StreamPeerTCP, line: String) -> void:
+	var reply: Dictionary = await handle_message(line)
+	if peer.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+		peer.put_data((JSON.stringify(reply) + "\n").to_utf8_buffer())
 
 func handle_message(line: String) -> Dictionary:
 	var msg = JSON.parse_string(line)
 	if not msg is Dictionary:
 		return { "ok": false, "error": "invalid json" }
-	var reply := _handle(msg)
+	var reply: Dictionary
+	if msg.get("event") == "capture":
+		reply = await capture(msg)
+	else:
+		reply = _handle(msg)
 	# JSON numbers parse as floats, the editor expects the seq back as an integer.
 	if msg.get("seq") is float:
 		reply["seq"] = int(msg["seq"])
@@ -267,6 +277,38 @@ func inspect(path: String, ids: Array) -> Dictionary:
 			nodes[str(int(raw))] = info
 	var session: TrenchDotLiveSession = _sessions.get(path_key(path))
 	return { "ok": true, "nodes": nodes, "live": session != null, "pending": session != null and session.pending() }
+
+## Renders the edited scene from [code]camera {position, forward, fov}[/code] in map units, after building it from
+## [code]text[/code] when given and letting a live session catch up. Errors and warnings logged meanwhile come back too.
+func capture(msg: Dictionary) -> Dictionary:
+	var path := str(msg.get("path", ""))
+	var maps := maps_for(path)
+	if maps.is_empty():
+		return { "ok": false, "error": "no scene open in the Godot editor uses %s, open one with a FuncGodotMap that builds it and has Auto Rebuild On Save on" % path.get_file() }
+	var camera: Dictionary = msg.get("camera", {})
+	var position = camera.get("position")
+	var forward = camera.get("forward")
+	if not (position is Array and position.size() == 3 and forward is Array and forward.size() == 3):
+		return { "ok": false, "error": "camera needs position and forward" }
+	var size := Vector2i(clampi(int(msg.get("width", 1280)), 16, 4096), clampi(int(msg.get("height", 720)), 16, 4096))
+
+	var collector := TrenchDotCapture.Collector.new()
+	OS.add_logger(collector)
+	if msg.has("text"):
+		_sessions.erase(path_key(path))
+		rebuild_maps(path, str(msg["text"]))
+	var session: TrenchDotLiveSession = _sessions.get(path_key(path))
+	var start := Time.get_ticks_msec()
+	while session and session.pending() and Time.get_ticks_msec() - start < 30000:
+		await get_tree().process_frame
+	OS.remove_logger(collector)
+	maps = maps_for(path)
+	var reply := { "ok": false, "error": "the map left the scene while it was being captured" }
+	if not maps.is_empty():
+		var xform := TrenchDotCapture.camera_transform(maps[0], Vector3(position[0], position[1], position[2]), Vector3(forward[0], forward[1], forward[2]))
+		reply = await TrenchDotCapture.render(self, maps[0].get_world_3d(), xform, float(camera.get("fov", 90.0)), size)
+	reply["warnings"] = collector.lines
+	return reply
 
 func _bump(key: String) -> void:
 	_epochs[key] = int(_epochs.get(key, 0)) + 1
