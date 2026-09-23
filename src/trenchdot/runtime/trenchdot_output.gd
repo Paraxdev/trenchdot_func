@@ -16,6 +16,7 @@ signal fired(targets: Array[Node])
 
 var _fired := 0
 var _callable := Callable(self, "fire")
+var _warned := false
 
 ## The parent's signal for [member output], also accepting the PascalCase name C# signals get.
 func _signal_name(parent: Node) -> StringName:
@@ -67,6 +68,10 @@ func fire(...args: Array) -> void:
 		shown = ", ".join(values.map(func(v): return str(v)))
 	TrenchDotIO.events().fired.emit(get_parent(), output, target, input, shown)
 	var targets := TrenchDotIO.find_targets(self, target, activator)
+	# !activator and @group targets can be empty on purpose, a name or node path that finds nothing is a mistake.
+	if targets.is_empty() and not _warned and target != "" and not target.begins_with("!") and not target.begins_with("@"):
+		_warned = true
+		push_warning("[TD I/O] %s.%s: target '%s' matches no node" % [get_parent().name, output, target])
 	for t in targets:
 		TrenchDotIO.invoke(t, input, parameter, activator, self, values)
 	fired.emit(targets)
