@@ -74,6 +74,47 @@ static func _set_layer_glow(material: ShaderMaterial, slot: int, source: Materia
 			textured[slot] = 1.0
 	return [energy, textured, multiply]
 
+## BaseMaterial3D's texture channels as the vectors its shader dots a sample with, in TextureChannel order.
+const _CHANNELS: Array[Vector4] = [Vector4(1, 0, 0, 0), Vector4(0, 1, 0, 0), Vector4(0, 0, 1, 0), Vector4(0, 0, 0, 1), Vector4(0.333333, 0.333333, 0.333333, 0)]
+
+## The per layer uniforms [method _set_layer_surface] fills, as they are for layers without a BaseMaterial3D.
+static func _default_surface() -> Dictionary:
+	return {
+		"normal_mapped": Vector4.ZERO, "normal_scales": Vector4.ONE,
+		"roughnesses": Vector4(0.9, 0.9, 0.9, 0.9), "roughness_textured": Vector4.ZERO, "roughness_channels": Projection(),
+		"ao_textured": Vector4.ZERO, "ao_channels": Projection(), "ao_light_affects": Vector4.ZERO,
+	}
+
+## Passes a layer material's normal map, roughness and ambient occlusion on to the terrain shader's slot
+## [param slot], collecting the per layer vectors in [param surface] under their uniform names. The shader has one
+## texture per layer for roughness and occlusion, so occlusion is only used when it shares the roughness texture
+## (an ORM texture) or the layer has no roughness texture.
+static func _set_layer_surface(material: ShaderMaterial, slot: int, source: Material, surface: Dictionary) -> void:
+	if not source is BaseMaterial3D:
+		return
+	var put := func(key: String, value: Variant) -> void:
+		var v = surface[key]
+		v[slot] = value
+		surface[key] = v
+	if source.normal_enabled and source.normal_texture:
+		material.set_shader_parameter("normal_texture%d" % slot, source.normal_texture)
+		put.call("normal_mapped", 1.0)
+		put.call("normal_scales", source.normal_scale)
+	put.call("roughnesses", source.roughness)
+	var orm := source is ORMMaterial3D
+	var rough_texture: Texture2D = source.orm_texture if orm else source.roughness_texture
+	var ao_texture: Texture2D = (source.orm_texture if orm else source.ao_texture) if source.ao_enabled else null
+	if rough_texture:
+		material.set_shader_parameter("surface_texture%d" % slot, rough_texture)
+		put.call("roughness_textured", 1.0)
+		put.call("roughness_channels", _CHANNELS[BaseMaterial3D.TEXTURE_CHANNEL_GREEN if orm else source.roughness_texture_channel])
+	elif ao_texture:
+		material.set_shader_parameter("surface_texture%d" % slot, ao_texture)
+	if ao_texture and (not rough_texture or ao_texture == rough_texture):
+		put.call("ao_textured", 1.0)
+		put.call("ao_channels", _CHANNELS[BaseMaterial3D.TEXTURE_CHANNEL_RED if orm else source.ao_texture_channel])
+		put.call("ao_light_affects", source.ao_light_affect)
+
 static func _shader(pixelated: bool) -> Shader:
 	if not pixelated:
 		return SHADER
@@ -206,6 +247,7 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 	var detiles := Vector4.ZERO
 	var sharpens := Vector4(0.5, 0.5, 0.5, 0.5)
 	var glow := [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
+	var surface := _default_surface()
 	var pixelated := false
 	for l in 4:
 		# Weight in a slot without a layer shows the first layer, like the editor's prepare_terrain_material.
@@ -214,7 +256,9 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 		if texture_name != "":
 			material.set_shader_parameter("layer%d" % l, FuncGodotUtil.load_texture(texture_name, settings))
 			pixelated = pixelated or _is_pixelated(texture_name, settings)
-			glow = _set_layer_glow(material, l, _layer_material(texture_name, settings), glow[0], glow[1], glow[2])
+			var source := _layer_material(texture_name, settings)
+			glow = _set_layer_glow(material, l, source, glow[0], glow[1], glow[2])
+			_set_layer_surface(material, l, source, surface)
 		tiles[l] = float(layer.get("tile", 256.0)) * scale
 		detiles[l] = clampf(float(layer.get("detile", 0.0)), 0.0, 1.0)
 		sharpens[l] = clampf(float(layer.get("detile_sharpen", 0.5)), 0.0, 1.0)
@@ -225,6 +269,8 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 	material.set_shader_parameter("glow_energy", glow[0])
 	material.set_shader_parameter("glow_textured", glow[1])
 	material.set_shader_parameter("glow_multiply", glow[2])
+	for key in surface:
+		material.set_shader_parameter(key, surface[key])
 	material.set_shader_parameter("map_offset", t.position)
 
 	var cells := Vector2i(res.x - 1, res.y - 1)
