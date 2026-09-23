@@ -6,6 +6,10 @@ class_name TrenchDotBuildReport extends RefCounted
 
 ## Tool texture names the TrenchDot editor uses unless the game config names them otherwise.
 const EDITOR_TOOL_TEXTURES := { "clip": "special/clip", "skip": "special/skip", "origin": "special/origin", "sky": "special/sky" }
+# Note: copies of TrenchDotEditorIntegration's settings, and the game config below is read untyped. Referring to
+# either class here closes a parse cycle through FuncGodotMap, and the editor integration is not for runtime use.
+const _CONFIG_SETTING := "trenchdot/game_config"
+const _DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
 
 var map_file := ""
 ## Why the build stopped early, empty when it finished.
@@ -186,12 +190,12 @@ static func _tool_textures(settings: FuncGodotMapSettings) -> Dictionary:
 	var out := {}
 	for role in EDITOR_TOOL_TEXTURES:
 		out[EDITOR_TOOL_TEXTURES[role]] = role
-	var path := str(ProjectSettings.get_setting(TrenchDotEditorIntegration.SETTING_CONFIG, TrenchDotEditorIntegration.DEFAULT_CONFIG))
-	var config: TrenchDotGameConfig = null
-	if path != "" and ResourceLoader.exists(path):
-		config = load(path) as TrenchDotGameConfig
-	if config and config.map_settings and config.map_settings != settings:
-		var ms := config.map_settings
+	var path := str(ProjectSettings.get_setting(_CONFIG_SETTING, _DEFAULT_CONFIG))
+	var config: Resource = load(path) if path != "" and ResourceLoader.exists(path) else null
+	var ms: FuncGodotMapSettings = null
+	if config:
+		ms = config.get(&"map_settings") as FuncGodotMapSettings
+	if ms and ms != settings:
 		for pair in [["clip", ms.clip_texture], ["skip", ms.skip_texture], ["origin", ms.origin_texture], ["sky", ms.sky_texture]]:
 			if pair[1] != "":
 				out[pair[1]] = pair[0]
