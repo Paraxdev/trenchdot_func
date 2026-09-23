@@ -119,6 +119,9 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 	if data.shapes.size() and node is CollisionObject3D:
 		node.collision_layer = definition.collision_layer
 		node.collision_mask = definition.collision_mask
+		# 1 is the class default, a class that picked its own mask keeps it.
+		if node is Area3D and definition.collision_mask == 1:
+			node.collision_mask = map_settings.trigger_collision_mask
 		node.collision_priority = definition.collision_priority
 		
 		var shape_to_face_array : Array[PackedInt32Array] = []

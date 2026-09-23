@@ -40,6 +40,10 @@ var scale_factor: float = 0.03125
 ## Optional array of node groups to add all generated nodes to.
 @export var entity_node_groups: Array[String] = []
 
+## Physics layers the triggers detect bodies on, for every brush entity built as an [Area3D] whose class leaves its
+## own collision mask at the default. Add the player's layer when it is not on layer 1, or triggers never fire.
+@export_flags_3d_physics var trigger_collision_mask: int = 1
+
 @export_subgroup("Entity Property Names")
 ## Default class property to use in naming generated nodes. This setting is overridden by [member FuncGodotFGDEntityClass.name_property].
 ## Naming occurs before adding to the [SceneTree] and applying properties.
