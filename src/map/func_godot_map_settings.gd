@@ -76,23 +76,30 @@ var scale_factor: float = 0.03125
 @export_subgroup("Hint Textures")
 ## Optional path for the clip texture, relative to [member base_texture_dir]. 
 ## Brush faces textured with the clip texture will have those faces removed from the generated [Mesh] but not the generated [Shape3D].
-@export var clip_texture: String = "clip":
+@export var clip_texture: String = "special/clip":
 	set(tex):
 		clip_texture = tex.to_lower()
 
 ## Optional path for the skip texture, relative to [member base_texture_dir]. 
 ## Brush faces textured with the skip texture will have those faces removed from the generated [Mesh]. 
 ## If [member FuncGodotFGDSolidClass.collision_shape_type] is set to concave then it will also remove collision from those faces in the generated [Shape3D].
-@export var skip_texture: String = "skip":
+@export var skip_texture: String = "special/skip":
 	set(tex):
 		skip_texture = tex.to_lower()
 
 ## Optional path for the origin texture, relative to [member base_texture_dir]. 
 ## Brush faces textured with the origin texture will have those faces removed from the generated [Mesh] and [Shape3D]. 
 ## The bounds of these faces will be used to calculate the origin point of the entity.
-@export var origin_texture: String = "origin":
+@export var origin_texture: String = "special/origin":
 	set(tex):
 		origin_texture = tex.to_lower()
+
+## Optional path for the sky texture, relative to [member base_texture_dir].
+## Brush faces textured with the sky texture will have those faces removed from the generated [Mesh] but not the generated [Shape3D],
+## like the sky of Quake and Source maps. The worldspawn sky keys, see [TrenchDotEnvironment], show the sky instead.
+@export var sky_texture: String = "special/sky":
+	set(tex):
+		sky_texture = tex.to_lower()
 @export_subgroup("")
 
 #endregion

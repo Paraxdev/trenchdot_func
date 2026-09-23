@@ -5,9 +5,11 @@ class_name TrenchDotEnvironment extends RefCounted
 ## sky_top_color, sky_horizon_color, sky_ground_color, fog_color and fog_density (per meter). For night maps
 ## ambient_energy and sky_energy scale the ambient light and the sky, and glow_intensity above 0 turns on glow so
 ## emissive materials and lamps bloom, while ssr 1 turns on screen space reflections for wet streets and glossy
-## floors. Colors are "r g b" in 0..255 or 0..1. Set the worldspawn key "environment" to 0 to skip it.
+## floors. Colors are "r g b" in 0..255 or 0..1. sky_panorama, a res:// image, replaces the procedural sky with a
+## panorama, as texture conversion writes for a Source skybox. Set the worldspawn key "environment" to 0 to skip it.
+## A WorldEnvironment the scene has already, outside the map, is left to do its job and none is added.
 
-const KEYS := ["sun_angles", "sky_top_color", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity", "ssr"]
+const KEYS := ["sun_angles", "sky_top_color", "sky_panorama", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity", "ssr"]
 
 static func parse_color(text: String, fallback: Color) -> Color:
 	var parts := text.split_floats(" ", false)
@@ -15,6 +17,18 @@ static func parse_color(text: String, fallback: Color) -> Color:
 		return fallback
 	var scale := 255.0 if parts[0] > 1.0 or parts[1] > 1.0 or parts[2] > 1.0 else 1.0
 	return Color(parts[0] / scale, parts[1] / scale, parts[2] / scale)
+
+## The WorldEnvironment of the scene [param map_node] is built into, leaving out the map's own nodes.
+static func scene_environment(map_node: Node) -> WorldEnvironment:
+	var stack: Array[Node] = [TrenchDotBuild.scene_owner(map_node)]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node == map_node:
+			continue
+		if node is WorldEnvironment:
+			return node
+		stack.append_array(node.get_children())
+	return null
 
 static func wants_environment(properties: Dictionary) -> bool:
 	if str(properties.get("environment", "1")) == "0":
@@ -29,14 +43,22 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 	var out: Array[Node] = []
 	if not wants_environment(properties):
 		return out
-	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = parse_color(str(properties.get("sky_top_color", "")), Color(0.32, 0.5, 0.78))
-	sky_material.sky_horizon_color = parse_color(str(properties.get("sky_horizon_color", "")), Color(0.72, 0.8, 0.88))
-	sky_material.ground_bottom_color = parse_color(str(properties.get("sky_ground_color", "")), Color(0.42, 0.44, 0.46))
-	sky_material.ground_horizon_color = sky_material.sky_horizon_color
-	sky_material.energy_multiplier = maxf(str(properties.get("sky_energy", "1")).to_float(), 0.0)
+	var sky_energy := maxf(str(properties.get("sky_energy", "1")).to_float(), 0.0)
+	var panorama_path := str(properties.get("sky_panorama", ""))
 	var sky := Sky.new()
-	sky.sky_material = sky_material
+	if panorama_path != "" and ResourceLoader.exists(panorama_path):
+		var panorama := PanoramaSkyMaterial.new()
+		panorama.panorama = load(panorama_path)
+		panorama.energy_multiplier = sky_energy
+		sky.sky_material = panorama
+	else:
+		var sky_material := ProceduralSkyMaterial.new()
+		sky_material.sky_top_color = parse_color(str(properties.get("sky_top_color", "")), Color(0.32, 0.5, 0.78))
+		sky_material.sky_horizon_color = parse_color(str(properties.get("sky_horizon_color", "")), Color(0.72, 0.8, 0.88))
+		sky_material.ground_bottom_color = parse_color(str(properties.get("sky_ground_color", "")), Color(0.42, 0.44, 0.46))
+		sky_material.ground_horizon_color = sky_material.sky_horizon_color
+		sky_material.energy_multiplier = sky_energy
+		sky.sky_material = sky_material
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
@@ -64,10 +86,11 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 		env.fog_sky_affect = 0.3
 		env.fog_light_color = parse_color(str(properties.get("fog_color", "")), Color(0.7, 0.78, 0.86))
 
-	var world_env := WorldEnvironment.new()
-	world_env.name = "environment"
-	world_env.environment = env
-	out.append(world_env)
+	if not scene_environment(map_node):
+		var world_env := WorldEnvironment.new()
+		world_env.name = "environment"
+		world_env.environment = env
+		out.append(world_env)
 
 	var sun := DirectionalLight3D.new()
 	sun.name = "sun"

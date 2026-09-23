@@ -93,6 +93,12 @@ static func is_origin(texture: String, map_settings: FuncGodotMapSettings) -> bo
 		return texture.to_lower() == map_settings.origin_texture
 	return false
 
+## Filters faces textured with Sky during the geometry generation step of the build process.
+static func is_sky(texture: String, map_settings: FuncGodotMapSettings) -> bool:
+	if map_settings:
+		return texture.to_lower() == map_settings.sky_texture
+	return false
+
 ## Filters faces textured with any of the tool textures during the geometry generation step of the build process.
 static func filter_face(texture: String, map_settings: FuncGodotMapSettings) -> bool:
 	if map_settings:
@@ -100,6 +106,7 @@ static func filter_face(texture: String, map_settings: FuncGodotMapSettings) -> 
 		if (texture == map_settings.skip_texture
 			or texture == map_settings.clip_texture
 		 	or texture == map_settings.origin_texture
+			or texture == map_settings.sky_texture
 			):
 			return true
 	return false
@@ -246,6 +253,7 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 						and texture_name != map_settings.clip_texture 
 						and texture_name != map_settings.skip_texture 
 						and texture_name != map_settings.origin_texture 
+						and texture_name != map_settings.sky_texture 
 						and texture.resource_path != default_texture_path):
 						# Make sure our material directory exists
 						var dir := DirAccess.open(material_path.get_base_dir())

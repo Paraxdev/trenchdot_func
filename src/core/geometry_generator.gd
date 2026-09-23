@@ -42,6 +42,9 @@ func is_clip(face: _FaceData) -> bool:
 func is_origin(face: _FaceData) -> bool:
 	return FuncGodotUtil.is_origin(face.texture, map_settings)
 
+func is_sky(face: _FaceData) -> bool:
+	return FuncGodotUtil.is_sky(face.texture, map_settings)
+
 #endregion
 
 #region BRUSHES
@@ -340,6 +343,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 	# Output mesh data
 	var mesh := ArrayMesh.new()
 	var mesh_arrays: Array[Array] = []
+	var surface_names: Array[String] = []
 	var build_concave: bool = entity.is_collision_concave()
 	var concave_vertices: PackedVector3Array
 
@@ -457,7 +461,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				var tx_size: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * map_settings.inverse_scale_factor)
 				if build_concave or entity.is_collision_convex():
 					concave_vertices.append_array(TrenchDotDisplacement.triangles(face, op_entity_ogl_xf))
-				if is_clip(face) or face.render_hidden:
+				if is_clip(face) or is_sky(face) or face.render_hidden:
 					continue
 				index_offset += TrenchDotDisplacement.append_surface(arrays, face, op_entity_ogl_xf, tx_size, index_offset, use_colors)
 				continue
@@ -474,8 +478,8 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				
 				concave_vertices.append_array(tris)
 				
-			# Do not generate visuals for clip textures
-			if is_clip(face) or face.render_hidden:
+			# Do not generate visuals for clip and sky textures
+			if is_clip(face) or is_sky(face) or face.render_hidden:
 				continue
 			
 			# Handle metadata for this face
@@ -528,22 +532,23 @@ func generate_entity_surfaces(entity_index: int) -> void:
 			
 			# FACE SCOPE END
 		
-		if FuncGodotUtil.filter_face(texture_name, map_settings):
+		# Godot refuses a surface without vertices, one whose faces were all culled, and every later surface would
+		# then take the name and material of the one before it.
+		if FuncGodotUtil.filter_face(texture_name, map_settings) or arrays[Mesh.ARRAY_VERTEX].is_empty():
 			continue
 		
 		mesh_arrays.append(arrays)
+		surface_names.append(texture_name)
 		
 		# SURFACE SCOPE END
 	
 	# MULTISURFACE SCOPE END
-	textures.erase(map_settings.clip_texture)
-	
 	if def.build_visuals:
 		# Build mesh
 		for array_index in mesh_arrays.size():
 			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh_arrays[array_index])
-			mesh.surface_set_name(array_index, textures[array_index])
-			mesh.surface_set_material(array_index, texture_materials[textures[array_index]])
+			mesh.surface_set_name(array_index, surface_names[array_index])
+			mesh.surface_set_material(array_index, texture_materials[surface_names[array_index]])
 		
 		# Apply mesh metadata	
 		if def.add_textures_metadata:

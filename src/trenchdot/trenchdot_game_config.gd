@@ -219,7 +219,7 @@ func build_config() -> Dictionary:
 			"material_extension": ms.material_file_extension,
 			"fallback_size": fallback_texture_size,
 		},
-		"tool_textures": { "clip": ms.clip_texture, "skip": ms.skip_texture, "origin": ms.origin_texture },
+		"tool_textures": { "clip": ms.clip_texture, "skip": ms.skip_texture, "origin": ms.origin_texture, "sky": ms.sky_texture },
 		"entities": entities,
 	}
 
