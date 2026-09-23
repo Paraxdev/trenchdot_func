@@ -6,8 +6,9 @@ class_name TrenchDotEnvironment extends RefCounted
 ## ambient_energy and sky_energy scale the ambient light and the sky, and glow_intensity above 0 turns on glow so
 ## emissive materials and lamps bloom, while ssr 1 turns on screen space reflections for wet streets and glossy
 ## floors. Colors are "r g b" in 0..255 or 0..1. sky_panorama, a res:// image, replaces the procedural sky with a
-## panorama, as texture conversion writes for a Source skybox. Set the worldspawn key "environment" to 0 to skip it.
-## A WorldEnvironment the scene has already, outside the map, is left to do its job and none is added.
+## panorama, as texture conversion writes for a Source skybox. The worldspawn key "environment" set to sun_only builds
+## only the sun, 0 or none builds nothing. A WorldEnvironment or DirectionalLight3D the scene has already, outside the
+## map, is left to do its job and none is added, so of several maps in one scene the first one built lights it.
 
 const KEYS := ["sun_angles", "sky_top_color", "sky_panorama", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity", "ssr"]
 
@@ -20,19 +21,42 @@ static func parse_color(text: String, fallback: Color) -> Color:
 
 ## The WorldEnvironment of the scene [param map_node] is built into, leaving out the map's own nodes.
 static func scene_environment(map_node: Node) -> WorldEnvironment:
-	var stack: Array[Node] = [TrenchDotBuild.scene_owner(map_node)]
+	return _scene_node(map_node, func(n: Node): return n is WorldEnvironment)
+
+## The first DirectionalLight3D of the scene [param map_node] is built into, leaving out the map's own nodes.
+static func scene_sun(map_node: Node) -> DirectionalLight3D:
+	return _scene_node(map_node, func(n: Node): return n is DirectionalLight3D)
+
+static func _scene_node(map_node: Node, wanted: Callable) -> Node:
+	var start := TrenchDotBuild.scene_owner(map_node)
+	# A map a game builds at runtime often has no owner, then the whole running scene counts.
+	if start == map_node and map_node.is_inside_tree() and not Engine.is_editor_hint():
+		start = map_node.get_tree().root
+	var stack: Array[Node] = [start]
 	while not stack.is_empty():
 		var node: Node = stack.pop_back()
 		if node == map_node:
 			continue
-		if node is WorldEnvironment:
+		if wanted.call(node):
 			return node
 		stack.append_array(node.get_children())
 	return null
 
+## The worldspawn key "environment": full, sun_only or none.
+static func mode(properties: Dictionary) -> String:
+	match str(properties.get("environment", "1")).strip_edges().to_lower():
+		"0", "none":
+			return "none"
+		"sun_only":
+			return "sun_only"
+	return "full"
+
 static func wants_environment(properties: Dictionary) -> bool:
-	if str(properties.get("environment", "1")) == "0":
-		return false
+	match mode(properties):
+		"none":
+			return false
+		"sun_only":
+			return true
 	for key in KEYS:
 		if properties.has(key):
 			return true
@@ -43,6 +67,17 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 	var out: Array[Node] = []
 	if not wants_environment(properties):
 		return out
+	if mode(properties) == "full" and not scene_environment(map_node):
+		out.append(_world_environment(properties))
+	if not scene_sun(map_node):
+		out.append(_sun(properties))
+	var scene_root := TrenchDotBuild.scene_owner(map_node)
+	for node in out:
+		map_node.add_child(node)
+		node.owner = scene_root
+	return out
+
+static func _world_environment(properties: Dictionary) -> WorldEnvironment:
 	var sky_energy := maxf(str(properties.get("sky_energy", "1")).to_float(), 0.0)
 	var panorama_path := str(properties.get("sky_panorama", ""))
 	var sky := Sky.new()
@@ -86,12 +121,12 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 		env.fog_sky_affect = 0.3
 		env.fog_light_color = parse_color(str(properties.get("fog_color", "")), Color(0.7, 0.78, 0.86))
 
-	if not scene_environment(map_node):
-		var world_env := WorldEnvironment.new()
-		world_env.name = "environment"
-		world_env.environment = env
-		out.append(world_env)
+	var world_env := WorldEnvironment.new()
+	world_env.name = "environment"
+	world_env.environment = env
+	return world_env
 
+static func _sun(properties: Dictionary) -> DirectionalLight3D:
 	var sun := DirectionalLight3D.new()
 	sun.name = "sun"
 	var angles := str(properties.get("sun_angles", "-40 -45")).split_floats(" ", false)
@@ -101,10 +136,4 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 	sun.light_energy = str(properties.get("sun_energy", "1.1")).to_float()
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 400.0
-	out.append(sun)
-
-	var scene_root := TrenchDotBuild.scene_owner(map_node)
-	for node in out:
-		map_node.add_child(node)
-		node.owner = scene_root
-	return out
+	return sun
