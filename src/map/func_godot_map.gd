@@ -23,6 +23,9 @@ signal build_failed
 ## Emitted when the build process succesfully completes.
 signal build_complete
 
+## Emitted in the running game once the map's materials were drawn off screen, see [member warm_up_shaders].
+signal warmed_up
+
 @export_tool_button("Build Map","CollisionShape3D") var _build_func: Callable = build
 @export_tool_button("Clear Map","Skeleton3D") var _clear_func: Callable = clear_children
 
@@ -51,6 +54,24 @@ var _map_file_internal: String = ""
 ## Smaller values can minimize floating point errors, reducing the effect of gaps between polygon seams.
 ## Measured in Godot units, not Quake units.
 @export_range(256.0, 2048.0, 128.0) var hyperplane_size: float = 512.0
+
+## In the running game, draw each material of the map once off screen after it builds or loads, so its render
+## pipelines compile then and not on the first frame an area shows. [signal warmed_up] follows when that is done.
+## Turn it off to call [method TrenchDotWarmUp.warm_shaders] yourself, for example once after all maps and the game's
+## environment are in place. Headless runs skip the drawing and only emit the signal.
+@export var warm_up_shaders: bool = true
+
+func _ready() -> void:
+	if get_child_count() > 0:
+		_warm_up()
+
+func _warm_up() -> void:
+	if Engine.is_editor_hint() or not warm_up_shaders or not is_inside_tree():
+		return
+	if DisplayServer.get_name() == "headless":
+		warmed_up.emit.call_deferred()
+		return
+	TrenchDotWarmUp.warm_shaders(self).finished.connect(warmed_up.emit)
 
 ## Map build failure handler. Displays error message and emits [signal build_failed] signal.
 func fail_build(reason: String, notify: bool = false) -> void:
@@ -188,3 +209,4 @@ func _build(text: String) -> void:
 		print("")
 		FuncGodotUtil.print_profile_info("Build complete", _SIGNATURE)
 	build_complete.emit()
+	_warm_up()
