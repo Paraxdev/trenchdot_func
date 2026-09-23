@@ -9,8 +9,9 @@ class_name TrenchDotEditorIntegration extends Node
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds), [code]focus[/code],
 ## [code]export_game_config[/code], and for live mode [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
-## (see [TrenchDotLiveSession]), and [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
-## a camera, see [TrenchDotCapture]).
+## (see [TrenchDotLiveSession]), [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
+## a camera, see [TrenchDotCapture]) and [code]walkable {path, agent, text}[/code] (the navigation mesh of the scene,
+## see [TrenchDotWalkable]).
 
 const SETTING_CONFIG := "trenchdot/game_config"
 const SETTING_AUTO_EXPORT := "trenchdot/auto_export_game_config"
@@ -158,6 +159,8 @@ func handle_message(line: String) -> Dictionary:
 	var reply: Dictionary
 	if msg.get("event") == "capture":
 		reply = await capture(msg)
+	elif msg.get("event") == "walkable":
+		reply = await walkable(msg)
 	else:
 		reply = _handle(msg)
 	# JSON numbers parse as floats, the editor expects the seq back as an integer.
@@ -309,6 +312,30 @@ func capture(msg: Dictionary) -> Dictionary:
 		reply = await TrenchDotCapture.render(self, maps[0].get_world_3d(), xform, float(camera.get("fov", 90.0)), size)
 	reply["warnings"] = collector.lines
 	return reply
+
+## Bakes the navigation mesh of the edited scene for [code]agent[/code], after building the map from [code]text[/code]
+## when it differs from the last build and letting a live session catch up. The whole scene is baked, so other maps and
+## Godot content next to the map count, and the polygons come back in the map's units.
+func walkable(msg: Dictionary) -> Dictionary:
+	var path := str(msg.get("path", ""))
+	var maps := maps_for(path)
+	if maps.is_empty():
+		return { "ok": false, "error": "no scene open in the Godot editor uses %s, open one with a FuncGodotMap that builds it and has Auto Rebuild On Save on" % path.get_file() }
+	if msg.has("text"):
+		var text_hash := str(str(msg["text"]).hash())
+		if maps.any(func(m: FuncGodotMap) -> bool: return str(m.get_meta(TrenchDotBuild.SOURCE_HASH_META, "")) != text_hash):
+			_sessions.erase(path_key(path))
+			rebuild_maps(path, str(msg["text"]))
+	var session: TrenchDotLiveSession = _sessions.get(path_key(path))
+	var start := Time.get_ticks_msec()
+	while session and session.pending() and Time.get_ticks_msec() - start < 30000:
+		await get_tree().process_frame
+	maps = maps_for(path)
+	if maps.is_empty():
+		return { "ok": false, "error": "the map left the scene while it was being baked" }
+	var root := EditorInterface.get_edited_scene_root() as Node3D
+	var agent = msg.get("agent", {})
+	return TrenchDotWalkable.report(root if root else maps[0], maps[0], agent if agent is Dictionary else {})
 
 func _bump(key: String) -> void:
 	_epochs[key] = int(_epochs.get(key, 0)) + 1
