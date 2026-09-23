@@ -216,10 +216,12 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 
 	# Interior faces: a face buried inside another closed solid never shows, however the two intersect, so a
 	# pile of overlapping solids draws as one outer shell instead of every solid's whole surface.
+	var grid := _SolidGrid.new(solids)
 	for entry: Entry in entries:
 		if entry.face.render_hidden or not entry.closed:
 			continue
-		for solid: Solid in solids:
+		for si in grid.around(entry.bounds.get_center()):
+			var solid := solids[si]
 			if solid.brush == entry.brush or not solid.bounds.encloses(entry.bounds):
 				continue
 			if _buried_in(solid, entry):
@@ -227,6 +229,41 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 				hidden += 1
 				break
 	return hidden
+
+## Buckets solids by the grid cells their bounds touch. A solid that encloses a face also holds the face's centre,
+## so the solids in the centre's cell are all the candidates, still in their original order.
+class _SolidGrid:
+	const CELL := 128.0
+	const MAX_CELLS := 4096
+	var cells: Dictionary = {}
+	## Solids too large to bucket, tested against every face.
+	var large: PackedInt32Array = []
+
+	func _init(solids: Array[Solid]) -> void:
+		for i in solids.size():
+			var b := solids[i].bounds.grow(COPLANAR_DIST)
+			var lo := Vector3i((b.position / CELL).floor())
+			var hi := Vector3i((b.end / CELL).floor())
+			var span := hi - lo + Vector3i.ONE
+			if span.x * span.y * span.z > MAX_CELLS:
+				large.append(i)
+				continue
+			for x in range(lo.x, hi.x + 1):
+				for y in range(lo.y, hi.y + 1):
+					for z in range(lo.z, hi.z + 1):
+						var key := Vector3i(x, y, z)
+						if not cells.has(key):
+							cells[key] = PackedInt32Array()
+						cells[key].append(i)
+
+	func around(p: Vector3) -> PackedInt32Array:
+		var here: PackedInt32Array = cells.get(Vector3i((p / CELL).floor()), PackedInt32Array())
+		if large.is_empty():
+			return here
+		var out := here.duplicate()
+		out.append_array(large)
+		out.sort()
+		return out
 
 ## True when [param covers] leave nothing of [param polygon] larger than a sliver.
 static func fully_covered(polygon: PackedVector2Array, covers: Array[PackedVector2Array]) -> bool:
