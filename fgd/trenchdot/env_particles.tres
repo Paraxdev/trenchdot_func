@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_class")
 classname = "env_particles"
-description = "A particle effect toggled through I/O: smoke, fire, sparks or dust"
+description = "A particle effect toggled through I/O: fire, smoke, sparks, rising puffs or rain"
 script_class = ExtResource("2_script")
 class_properties = Dictionary[String, Variant]({
 "targetname": "",
@@ -16,7 +16,17 @@ class_properties = Dictionary[String, Variant]({
 "start_emitting": false,
 "effect": {
 "rise": "rise",
+"fire": "fire",
+"smoke": "smoke",
+"sparks": "sparks",
 "rain": "rain"
+},
+"color": Color(1, 1, 1, 1),
+"size": 0.0,
+"blend": {
+"auto": "auto",
+"add": "add",
+"mix": "mix"
 },
 "area": "10 1 10"
 })
@@ -26,7 +36,10 @@ class_property_descriptions = Dictionary[String, Variant]({
 "lifetime": "Seconds each particle lives",
 "one_shot": "Emits one burst instead of continuously",
 "start_emitting": "Emits from map load",
-"effect": ["Built in look: puffs rising, or rain falling from a box above the entity", "rise"],
+"effect": ["Built in look: glowing puffs rising, a flame, smoke, falling sparks, or rain from a box above the entity", "rise"],
+"color": "Tints the effect, white keeps its own colors",
+"size": "Particle size in meters, a spark's or raindrop's length. 0 uses the effect's own",
+"blend": ["How particles mix with what is behind: additive glow, or mixed like smoke. auto uses the effect's own", "auto"],
 "area": "Rain: width, height and depth in meters of the box the drops start in"
 })
 meta_properties = Dictionary[String, Variant]({
