@@ -5,8 +5,9 @@ class_name TrenchDotEditorIntegration extends Node
 ##
 ## Live link protocol: newline delimited JSON over TCP on 127.0.0.1, every message answered by one line that echoes its
 ## [code]seq[/code]. Events:
-## [code]status[/code] (project, Godot version, pid and the maps of the edited scene with their build epoch),
-## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds), [code]focus[/code],
+## [code]status[/code] (project, Godot version, pid, the edited scene and its maps with their build epoch),
+## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds of the edited scene, naming the
+## background scene tabs that use the map too, which build a missed save when shown), [code]focus[/code],
 ## [code]export_game_config[/code], and for live mode [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
 ## (see [TrenchDotLiveSession]), [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
@@ -19,6 +20,8 @@ const SETTING_LIVE_LINK := "trenchdot/live_link_enabled"
 const SETTING_PORT := "trenchdot/live_link_port"
 const DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
 const DEFAULT_PORT := 7842
+## How often to try the port again while another program holds it.
+const LISTEN_RETRY_MSEC := 3000
 
 var plugin: EditorPlugin
 var _server: TCPServer
@@ -30,6 +33,12 @@ var _epochs: Dictionary = {}
 ## Path key to the instance ids of the FuncGodotMap nodes that used it at the last status.
 var _map_ids: Dictionary = {}
 var _sessions: Dictionary = {}
+var _port := 0
+var _next_listen := 0
+## Instance id of the root of a background scene tab to the saved map files (path key to path) it missed. They are
+## built when the tab is shown.
+var _waiting: Dictionary = {}
+var _shown_root_id := 0
 
 static func ensure_setting(name: String, value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "") -> void:
 	if not ProjectSettings.has_setting(name):
@@ -54,7 +63,7 @@ func _ready() -> void:
 	ensure_setting(SETTING_CONFIG, DEFAULT_CONFIG, TYPE_STRING, PROPERTY_HINT_FILE, "*.tres")
 	ensure_setting(SETTING_AUTO_EXPORT, true, TYPE_BOOL)
 	ensure_setting(SETTING_LIVE_LINK, true, TYPE_BOOL)
-	ensure_setting(SETTING_PORT, DEFAULT_PORT, TYPE_INT)
+	ensure_setting(SETTING_PORT, DEFAULT_PORT, TYPE_INT, PROPERTY_HINT_RANGE, "1024,65535")
 	ensure_setting(TrenchDotBuild.SETTING_THREADED, true, TYPE_BOOL)
 	ensure_setting(TrenchDotLiveSession.SETTING_CHUNK_SIZE, TrenchDotLiveSession.DEFAULT_CHUNK_SIZE, TYPE_FLOAT, PROPERTY_HINT_RANGE, "2,256,1,suffix:m")
 	ensure_setting(TrenchDotCSharp.SETTING, PackedStringArray(["res://"]), TYPE_PACKED_STRING_ARRAY, PROPERTY_HINT_TYPE_STRING, "%d/%d:" % [TYPE_STRING, PROPERTY_HINT_DIR])
@@ -69,12 +78,31 @@ func _ready() -> void:
 	if fs and not fs.filesystem_changed.is_connected(_on_filesystem_changed):
 		fs.filesystem_changed.connect(_on_filesystem_changed)
 
-	if ProjectSettings.get_setting(SETTING_LIVE_LINK, true):
-		start_live_link(int(ProjectSettings.get_setting(SETTING_PORT, DEFAULT_PORT)))
+	apply_link_settings()
+	if not ProjectSettings.settings_changed.is_connected(apply_link_settings):
+		ProjectSettings.settings_changed.connect(apply_link_settings)
 
 func _exit_tree() -> void:
+	if ProjectSettings.settings_changed.is_connected(apply_link_settings):
+		ProjectSettings.settings_changed.disconnect(apply_link_settings)
+	stop_live_link()
+
+## Starts, stops or moves the live link to match the project settings, so a changed port applies right away.
+func apply_link_settings() -> void:
+	var port := int(ProjectSettings.get_setting(SETTING_PORT, DEFAULT_PORT))
+	if not ProjectSettings.get_setting(SETTING_LIVE_LINK, true):
+		if _port > 0:
+			stop_live_link()
+			print("[TrenchDot] live link stopped")
+	elif port != _port:
+		stop_live_link()
+		start_live_link(port)
+
+func stop_live_link() -> void:
+	_port = 0
 	if _server:
 		_server.stop()
+		_server = null
 	for p in _peers:
 		p.disconnect_from_host()
 	_peers.clear()
@@ -95,14 +123,25 @@ func export_game_config() -> void:
 	if config:
 		config.export_file()
 
+## Listens on [param port]. While another program holds it, usually a second Godot editor with the same project, the
+## port is tried again every few seconds, so this editor takes the link over once that one closes.
 func start_live_link(port: int) -> void:
-	_server = TCPServer.new()
-	var err := _server.listen(port, "127.0.0.1")
+	_port = port
+	_listen(true)
+
+func is_listening() -> bool:
+	return _server != null and _server.is_listening()
+
+func _listen(first: bool) -> void:
+	var server := TCPServer.new()
+	var err := server.listen(_port, "127.0.0.1")
 	if err != OK:
-		push_warning("[TrenchDot] live link could not listen on port %d (%s)" % [port, error_string(err)])
-		_server = null
+		_next_listen = Time.get_ticks_msec() + LISTEN_RETRY_MSEC
+		if first:
+			push_warning("[TrenchDot] live link could not listen on port %d (%s). If another Godot editor has this project open, TrenchDot talks to that one: close it and this editor takes over within a few seconds. Otherwise give the project its own port in trenchdot/live_link_port and in TrenchDot's preferences." % [_port, error_string(err)])
 		return
-	print("[TrenchDot] live link listening on 127.0.0.1:%d" % port)
+	_server = server
+	print("[TrenchDot] live link listening on 127.0.0.1:%d" % _port)
 
 ## Complete lines at the start of [param buffer], split on the newline byte so multibyte characters are never cut.
 ## The rest stays in the buffer.
@@ -119,6 +158,14 @@ static func take_lines(buffer: PackedByteArray) -> Array:
 func _process(_delta: float) -> void:
 	for session: TrenchDotLiveSession in _sessions.values():
 		session.process()
+	if Engine.is_editor_hint():
+		var root := EditorInterface.get_edited_scene_root()
+		var id := root.get_instance_id() if root else 0
+		if id != _shown_root_id:
+			_shown_root_id = id
+			build_waiting()
+	if not _server and _port > 0 and Time.get_ticks_msec() >= _next_listen:
+		_listen(false)
 	if not _server:
 		return
 	while _server.is_connection_available():
@@ -177,10 +224,10 @@ func _handle(msg: Dictionary) -> Dictionary:
 			return status()
 		"map_saved":
 			_sessions.erase(path_key(path))
-			return { "ok": true, "rebuilt": rebuild_maps(path) }
+			return built_reply(path, rebuild_maps(path), true)
 		"build":
 			_sessions.erase(path_key(path))
-			return { "ok": true, "rebuilt": rebuild_maps(path, str(msg.get("text", ""))) }
+			return built_reply(path, rebuild_maps(path, str(msg.get("text", ""))), false)
 		"focus":
 			DisplayServer.window_move_to_foreground()
 			return { "ok": true }
@@ -223,8 +270,11 @@ func maps_for(path: String) -> Array[FuncGodotMap]:
 	return out
 
 func _scene_maps() -> Array[FuncGodotMap]:
+	return maps_under(EditorInterface.get_edited_scene_root())
+
+## FuncGodotMap nodes under [param root] that rebuild for TrenchDot.
+static func maps_under(root: Node) -> Array[FuncGodotMap]:
 	var out: Array[FuncGodotMap] = []
-	var root := EditorInterface.get_edited_scene_root()
 	if not root:
 		return out
 	var stack: Array[Node] = [root]
@@ -260,8 +310,45 @@ func status() -> Dictionary:
 		maps.append({ "path": files[key], "epoch": _epochs.get(key, 0) })
 	return {
 		"ok": true, "project": ProjectSettings.globalize_path("res://"), "godot": Engine.get_version_info()["string"],
-		"pid": OS.get_process_id(), "maps": maps,
+		"pid": OS.get_process_id(), "maps": maps, "scene": scene_name(EditorInterface.get_edited_scene_root()),
 	}
+
+## The file of the scene under [param root], or its root name while it is unsaved. Empty without a scene.
+static func scene_name(root: Node) -> String:
+	if not root:
+		return ""
+	return root.scene_file_path if root.scene_file_path != "" else String(root.name)
+
+## Reply to a save or build that rebuilt [param rebuilt] maps in the scene Godot shows. It names that scene and the
+## background scene tabs that use [param path] too. With [param wait] those build the saved file when they are shown.
+func built_reply(path: String, rebuilt: int, wait: bool) -> Dictionary:
+	var reply := { "ok": true, "rebuilt": rebuilt }
+	if not Engine.is_editor_hint():
+		return reply
+	var shown := EditorInterface.get_edited_scene_root()
+	reply["scene"] = scene_name(shown)
+	var waiting := []
+	var target := path_key(path)
+	for root: Node in EditorInterface.get_open_scene_roots():
+		if root != shown and maps_under(root).any(func(m: FuncGodotMap) -> bool: return path_key(resolved_map_path(m)) == target):
+			waiting.append(scene_name(root))
+			if wait:
+				var missed: Dictionary = _waiting.get_or_add(root.get_instance_id(), {})
+				missed[target] = path
+	if not waiting.is_empty():
+		reply["waiting"] = waiting
+	return reply
+
+## Rebuilds the maps that were saved while the scene tab Godot now shows was in the background.
+func build_waiting() -> void:
+	for id in _waiting.keys():
+		if not is_instance_id_valid(id):
+			_waiting.erase(id)
+	var root := EditorInterface.get_edited_scene_root()
+	var missed: Dictionary = _waiting.get(root.get_instance_id(), {}) if root else {}
+	_waiting.erase(root.get_instance_id() if root else 0)
+	for path: String in missed.values():
+		rebuild_maps(path)
 
 ## Generated nodes of the map node ids [param ids] in the first map using [param path], for checking live updates.
 func inspect(path: String, ids: Array) -> Dictionary:
