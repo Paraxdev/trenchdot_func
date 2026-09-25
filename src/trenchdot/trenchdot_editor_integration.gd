@@ -42,6 +42,8 @@ var _next_listen := 0
 ## built when the tab is shown.
 var _waiting: Dictionary = {}
 var _shown_root_id := 0
+## The last warning about the port setting. settings_changed fires for every setting, so a bad port is only reported once.
+var _port_problem := ""
 
 static func ensure_setting(name: String, value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "") -> void:
 	if not ProjectSettings.has_setting(name):
@@ -50,13 +52,25 @@ static func ensure_setting(name: String, value: Variant, type: int, hint: int = 
 	ProjectSettings.set_initial_value(name, value)
 	ProjectSettings.set_as_basic(name, true)
 
-## The port from the project setting, or the default with a warning when it was cleared or set out of range.
+## The port from the project setting, or the default when it was cleared or set out of range.
 static func live_link_port(value: Variant) -> int:
+	return DEFAULT_PORT if live_link_port_problem(value) != "" else int(value)
+
+## Why the port setting cannot be used, empty when it is fine.
+static func live_link_port_problem(value: Variant) -> String:
 	var port := int(value) if value is int or value is float else 0
 	if port < MIN_PORT or port > MAX_PORT:
-		push_warning("[TrenchDot] live link port %s is not between %d and %d, using %d" % [value, MIN_PORT, MAX_PORT, DEFAULT_PORT])
-		return DEFAULT_PORT
-	return port
+		return "[TrenchDot] live link port %s is not between %d and %d, using %d" % [value, MIN_PORT, MAX_PORT, DEFAULT_PORT]
+	return ""
+
+## Warns about a bad port setting unless the last call already did for the same problem. Returns whether it warned.
+func warn_port_problem(value: Variant) -> bool:
+	var problem := live_link_port_problem(value)
+	var warn := problem != "" and problem != _port_problem
+	if warn:
+		push_warning(problem)
+	_port_problem = problem
+	return warn
 
 ## Comparable form of a map path: global, forward slashes, lower case.
 static func path_key(path: String) -> String:
@@ -100,7 +114,9 @@ func _exit_tree() -> void:
 
 ## Starts, stops or moves the live link to match the project settings, so a changed port applies right away.
 func apply_link_settings() -> void:
-	var port := live_link_port(ProjectSettings.get_setting(SETTING_PORT, DEFAULT_PORT))
+	var value: Variant = ProjectSettings.get_setting(SETTING_PORT, DEFAULT_PORT)
+	warn_port_problem(value)
+	var port := live_link_port(value)
 	if not ProjectSettings.get_setting(SETTING_LIVE_LINK, true):
 		if _port > 0:
 			stop_live_link()
