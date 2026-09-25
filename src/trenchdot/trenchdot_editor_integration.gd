@@ -20,6 +20,9 @@ const SETTING_LIVE_LINK := "trenchdot/live_link_enabled"
 const SETTING_PORT := "trenchdot/live_link_port"
 const DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
 const DEFAULT_PORT := 7842
+## Ports below 1024 need admin rights on most systems, so the setting stays in this range.
+const MIN_PORT := 1024
+const MAX_PORT := 65535
 ## How often to try the port again while another program holds it.
 const LISTEN_RETRY_MSEC := 3000
 
@@ -47,6 +50,14 @@ static func ensure_setting(name: String, value: Variant, type: int, hint: int = 
 	ProjectSettings.set_initial_value(name, value)
 	ProjectSettings.set_as_basic(name, true)
 
+## The port from the project setting, or the default with a warning when it was cleared or set out of range.
+static func live_link_port(value: Variant) -> int:
+	var port := int(value) if value is int or value is float else 0
+	if port < MIN_PORT or port > MAX_PORT:
+		push_warning("[TrenchDot] live link port %s is not between %d and %d, using %d" % [value, MIN_PORT, MAX_PORT, DEFAULT_PORT])
+		return DEFAULT_PORT
+	return port
+
 ## Comparable form of a map path: global, forward slashes, lower case.
 static func path_key(path: String) -> String:
 	var global := ProjectSettings.globalize_path(path) if path.begins_with("res://") else path
@@ -63,7 +74,7 @@ func _ready() -> void:
 	ensure_setting(SETTING_CONFIG, DEFAULT_CONFIG, TYPE_STRING, PROPERTY_HINT_FILE, "*.tres")
 	ensure_setting(SETTING_AUTO_EXPORT, true, TYPE_BOOL)
 	ensure_setting(SETTING_LIVE_LINK, true, TYPE_BOOL)
-	ensure_setting(SETTING_PORT, DEFAULT_PORT, TYPE_INT, PROPERTY_HINT_RANGE, "1024,65535")
+	ensure_setting(SETTING_PORT, DEFAULT_PORT, TYPE_INT, PROPERTY_HINT_RANGE, "%d,%d" % [MIN_PORT, MAX_PORT])
 	ensure_setting(TrenchDotBuild.SETTING_THREADED, true, TYPE_BOOL)
 	ensure_setting(TrenchDotLiveSession.SETTING_CHUNK_SIZE, TrenchDotLiveSession.DEFAULT_CHUNK_SIZE, TYPE_FLOAT, PROPERTY_HINT_RANGE, "2,256,1,suffix:m")
 	ensure_setting(TrenchDotCSharp.SETTING, PackedStringArray(["res://"]), TYPE_PACKED_STRING_ARRAY, PROPERTY_HINT_TYPE_STRING, "%d/%d:" % [TYPE_STRING, PROPERTY_HINT_DIR])
@@ -89,7 +100,7 @@ func _exit_tree() -> void:
 
 ## Starts, stops or moves the live link to match the project settings, so a changed port applies right away.
 func apply_link_settings() -> void:
-	var port := int(ProjectSettings.get_setting(SETTING_PORT, DEFAULT_PORT))
+	var port := live_link_port(ProjectSettings.get_setting(SETTING_PORT, DEFAULT_PORT))
 	if not ProjectSettings.get_setting(SETTING_LIVE_LINK, true):
 		if _port > 0:
 			stop_live_link()
