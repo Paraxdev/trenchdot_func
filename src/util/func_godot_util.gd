@@ -37,6 +37,9 @@ static func is_point_in_convex_hull(planes: Array[Plane], vertex: Vector3) -> bo
 
 ## Fallback texture if the one a face names cannot be found.
 const default_texture_path: String = "res://addons/func_godot/textures/default_texture.png"
+## Holds the default texture and the TrenchDot editor's built in dev/ colours, used when the project has no
+## texture of that name.
+const builtin_texture_dir: String = "res://addons/func_godot/textures"
 
 const _pbr_textures: PackedInt32Array = [
 	StandardMaterial3D.TEXTURE_ALBEDO,
@@ -73,6 +76,9 @@ static func load_texture(texture_name: String, map_settings: FuncGodotMapSetting
 			else:
 				printerr("Error: Texture load failed! (%s) not a valid Texture2D resource", texture_path)
 	
+	var builtin: String = builtin_texture_dir.path_join(texture_name + ".png")
+	if texture_name.begins_with("dev/") and ResourceLoader.exists(builtin):
+		return load(builtin)
 	return load(default_texture_path)
 
 ## Filters faces textured with Skip during the geometry generation step of the build process.
@@ -254,7 +260,7 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 						and texture_name != map_settings.skip_texture 
 						and texture_name != map_settings.origin_texture 
 						and texture_name != map_settings.sky_texture 
-						and texture.resource_path != default_texture_path):
+						and not texture.resource_path.begins_with(builtin_texture_dir)):
 						# Make sure our material directory exists
 						var dir := DirAccess.open(material_path.get_base_dir())
 						if not dir:
