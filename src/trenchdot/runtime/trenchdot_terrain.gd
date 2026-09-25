@@ -143,15 +143,21 @@ static func build_all(map_node: Node3D, terrains: Array[Dictionary], settings: F
 			out.append(terrain)
 	return out
 
-## Creates one terrain node named after its map node id under [param parent], owned like the other generated nodes.
+## Creates one terrain node named after its map node id and label under [param parent], owned like the other generated
+## nodes.
 ## [param xform] places it: a [Transform3D] for an instance occurrence (rotates the terrain's center about the
 ## instance, like Terrain::transformed, the grid itself stays axis aligned), or a plain [Vector3] offset for a
 ## live rebuild that only moves the terrain.
+## [code]terrain_<id>[/code], followed by the name given in the editor when there is one.
+static func node_name(data: Dictionary, id: int) -> String:
+	var label := str(data.get("label", "")).replace(" ", "_")
+	return (("terrain_%d" % id) + ("_" + label if label != "" else "")).validate_node_name()
+
 static func build_one(map_node: Node, parent: Node, data: Dictionary, xform: Variant, id: int, settings: FuncGodotMapSettings) -> TrenchDotTerrain:
 	var terrain := create(data, xform, settings)
 	if not terrain:
 		return null
-	terrain.name = "terrain_%d" % id
+	terrain.name = node_name(data, id)
 	terrain.set_meta(TrenchDotBuild.ID_META, id)
 	parent.add_child(terrain)
 	var scene_root := TrenchDotBuild.scene_owner(map_node)
