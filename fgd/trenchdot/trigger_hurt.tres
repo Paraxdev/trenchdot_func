@@ -29,6 +29,6 @@ class_property_descriptions = Dictionary[String, Variant]({
 meta_properties = Dictionary[String, Variant]({
 "color": Color(1, 0.2, 0.2, 1),
 "inputs": ["enable", "disable", "toggle"],
-"outputs": ["hurt"]
+"outputs": ["hurt", "triggered", "entered", "exited"]
 })
 node_class = "Area3D"

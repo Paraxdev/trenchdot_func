@@ -41,7 +41,7 @@ class_property_descriptions = Dictionary[String, Variant]({
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.9019608, 0.3019608, 0.3019608, 1),
 "property_types": {"scene": "resource"},
-"inputs": ["spawn", "start", "stop", "toggle", "kill_all"],
-"outputs": ["spawned", "all_dead", "exhausted"]
+"inputs": ["spawn", "start", "stop", "toggle", "kill_all", "enable", "disable"],
+"outputs": ["spawned", "all_dead", "exhausted", "triggered", "entered", "exited"]
 })
 node_class = "Area3D"

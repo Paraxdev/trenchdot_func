@@ -30,6 +30,6 @@ meta_properties = Dictionary[String, Variant]({
 "color": Color(0.4, 0.8666667, 1, 1),
 "property_types": {"destination": "target_destination"},
 "inputs": ["enable", "disable", "toggle"],
-"outputs": ["teleported"]
+"outputs": ["teleported", "triggered", "entered", "exited"]
 })
 node_class = "Area3D"

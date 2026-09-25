@@ -29,6 +29,6 @@ meta_properties = Dictionary[String, Variant]({
 "property_types": {"push": "vector3"},
 "gizmos": [{"type": "travel", "property": "push"}],
 "inputs": ["enable", "disable", "toggle"],
-"outputs": ["pushed"]
+"outputs": ["pushed", "triggered", "entered", "exited"]
 })
 node_class = "Area3D"
