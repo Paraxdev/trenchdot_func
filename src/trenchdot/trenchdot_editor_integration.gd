@@ -106,6 +106,7 @@ func _ready() -> void:
 	apply_link_settings()
 	if not ProjectSettings.settings_changed.is_connected(apply_link_settings):
 		ProjectSettings.settings_changed.connect(apply_link_settings)
+	_install_pack_for_maps.call_deferred()
 
 func _exit_tree() -> void:
 	if ProjectSettings.settings_changed.is_connected(apply_link_settings):
@@ -144,6 +145,14 @@ func load_config() -> TrenchDotGameConfig:
 		push_warning("[TrenchDot] game config %s not found" % path)
 		return null
 	return load(path) as TrenchDotGameConfig
+
+## Maps made while the gameplay entities were part of the addon keep them after an update.
+func _install_pack_for_maps() -> void:
+	if TrenchDotEntityPack.installed() or not TrenchDotEntityPack.available():
+		return
+	var config := load_config()
+	if not TrenchDotEntityPack.install_for_maps(config.fgd_file if config else null).is_empty():
+		EditorInterface.get_resource_filesystem().scan()
 
 func export_game_config() -> void:
 	var config := load_config()
