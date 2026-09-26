@@ -126,6 +126,28 @@ static func _class_io(node_class: String, outputs: Array) -> void:
 			outputs.append({ "name": s["name"], "parameter": ", ".join(params) })
 		cls = ClassDB.get_parent_class(cls)
 
+## Where each classname of [param fgd] is defined, as an Array of res:// paths in the order FuncGodot merges them: base
+## files first, then the file's own entities, then an installed pack. The last one is the one maps get.
+static func definition_sources(fgd: FuncGodotFGDFile, out: Dictionary = {}, visiting: Array = []) -> Dictionary:
+	if not fgd or fgd in visiting:
+		return out
+	visiting.append(fgd)
+	for base in fgd.base_fgd_files:
+		if base is FuncGodotFGDFile:
+			definition_sources(base, out, visiting)
+	for def in fgd.get_fgd_classes():
+		if not (def is FuncGodotFGDPointClass or def is FuncGodotFGDSolidClass) or def.classname.replace(" ", "") == "":
+			continue
+		# Definitions saved inside the FGD file have a sub-resource path, the file names them better.
+		var where: String = def.resource_path if def.resource_path != "" and not def.resource_path.contains("::") else fgd.resource_path
+		var list: Array = out.get_or_add(def.classname, [])
+		list.erase(where)
+		list.append(where)
+	if fgd is TrenchDotFGDFile:
+		definition_sources(fgd.pack_fgd(), out, visiting)
+	visiting.erase(fgd)
+	return out
+
 func build_config() -> Dictionary:
 	var entities: Array = []
 	var defs: Dictionary = fgd_file.get_entity_definitions() if fgd_file else {}
@@ -206,8 +228,14 @@ func build_config() -> Dictionary:
 		if not cs_entry["classname"] in known:
 			entities.append(cs_entry)
 
+	var clashes: Array = []
+	var sources := definition_sources(fgd_file)
+	for classname in sources:
+		if sources[classname].size() > 1:
+			clashes.append({ "classname": classname, "definitions": sources[classname] })
+
 	var ms := map_settings if map_settings else FuncGodotMapSettings.new()
-	return {
+	var config := {
 		"format": "trenchdot-game",
 		"version": FORMAT_VERSION,
 		"name": game_name,
@@ -222,6 +250,9 @@ func build_config() -> Dictionary:
 		"tool_textures": { "clip": ms.clip_texture, "skip": ms.skip_texture, "origin": ms.origin_texture, "sky": ms.sky_texture },
 		"entities": entities,
 	}
+	if not clashes.is_empty():
+		config["clashes"] = clashes
+	return config
 
 ## Problems in [member fgd_file]'s [code]meta_properties[/code] that [method build_config] exports without complaint.
 ## An empty [code]inputs[/code] or [code]outputs[/code] array means no curation (every discovered one stays), not
