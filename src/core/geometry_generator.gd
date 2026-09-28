@@ -22,6 +22,8 @@ var hyperplane_size: float = 512.0
 var entity_data: Array[_EntityData]
 var texture_materials: Dictionary[String, Material]
 var texture_sizes: Dictionary[String, Vector2]
+## Sizes that replace a texture's own, see [member FuncGodotData.ParseData.texture_sizes].
+var size_overrides: Dictionary[String, Vector2] = {}
 
 # Signals
 
@@ -627,6 +629,7 @@ func build(build_flags: int, entities: Array[_EntityData]) -> Error:
 	var texture_map: Array[Dictionary] = FuncGodotUtil.build_texture_map(entity_data, map_settings)
 	texture_materials = texture_map[0]
 	texture_sizes = texture_map[1]
+	texture_sizes.merge(size_overrides, true)
 	
 	var task_id: int
 	declare_step.emit("Generating brush vertices")

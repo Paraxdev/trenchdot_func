@@ -64,6 +64,8 @@ class Context:
 	var geometry: Array[Dictionary] = []
 	## The map's baked lighting, see [method TrenchDotLightmap.decode]. Empty when it has none or it is not used.
 	var lightmap: Dictionary = {}
+	## Names of the textures laid out by world projection, see [method TrenchDotParser._texture_settings].
+	var world_projected: Dictionary = {}
 
 
 static func parse(text: String, map_settings: FuncGodotMapSettings, parse_data: _ParseData, map_path: String = "") -> _ParseData:
@@ -83,6 +85,7 @@ static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_
 		ctx.lightmap = TrenchDotLightmap.decode(json.get("lightmap"))
 		parse_data.lightmap = ctx.lightmap
 
+	_texture_settings(ctx, json.get("textures"))
 	var world := _EntityData.new()
 	world.properties["classname"] = "worldspawn"
 	for key in json.get("properties", {}):
@@ -98,6 +101,31 @@ static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_
 	_convert_geometry(ctx)
 	return parse_data
 
+
+## Reads the settings the map keeps per texture: a repeat size in map units that replaces the texture's own, and
+## world projection, which ignores each face's alignment. Baking settings only matter to the editor's bake.
+static func _texture_settings(ctx: Context, textures: Variant) -> void:
+	if not textures is Dictionary:
+		return
+	for name in textures:
+		var settings: Variant = textures[name]
+		if not settings is Dictionary:
+			continue
+		var size := vec2(settings.get("size"), Vector2.ZERO)
+		if size.x > 0.0 and size.y > 0.0:
+			ctx.parse_data.texture_sizes[str(name)] = size
+		if settings.get("projection", "face") == "world":
+			ctx.world_projected[str(name)] = true
+
+## The texture axes the editor gives a face with [param normal] when it is reset, in Godot space, see paraxial_axes
+## in crates/td_geom/src/uv.rs.
+static func paraxial_axes(normal: Vector3) -> Array[Vector3]:
+	var a := normal.abs()
+	if a.x >= a.y and a.x >= a.z:
+		return [Vector3.FORWARD if normal.x >= 0.0 else Vector3.BACK, Vector3.DOWN]
+	if a.y >= a.z:
+		return [Vector3.RIGHT, Vector3.BACK]
+	return [Vector3.RIGHT if normal.z >= 0.0 else Vector3.LEFT, Vector3.DOWN]
 
 ## Refuses what the editor refuses to open: another format, or a version newer than this importer knows.
 static func _readable(json: Variant, path: String) -> bool:
@@ -131,7 +159,7 @@ static func _convert_geometry(ctx: Context) -> void:
 		if node.get("type", "") == "mesh":
 			brush = TrenchDotMesh.parse(node, job["xform"], ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
 		else:
-			brush = _parse_brush(ctx.map_settings, job["xform"], node)
+			brush = _parse_brush(ctx.map_settings, job["xform"], node, ctx.world_projected)
 		if brush:
 			brush.node_id = int(node.get("id", 0)) + int(job["ns"]) * 1000000
 			# Only the map's own nodes were baked, prefab contents are the same node ids in another file.
@@ -269,7 +297,7 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 
 
 ## Runs on worker threads, so it only creates data.
-static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D, node: Dictionary) -> _BrushData:
+static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D, node: Dictionary, world_projected: Dictionary = {}) -> _BrushData:
 	var raw_vertices: Array = node.get("vertices", [])
 	var faces: Array = node.get("faces", [])
 	if raw_vertices.size() < 4 or faces.size() < 4:
@@ -333,7 +361,13 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 		var v_axis := vec3(uv.get("v_axis"), Vector3.BACK)
 		var offset := vec2(uv.get("offset"), Vector2.ZERO)
 		var uv_scale := vec2(uv.get("scale"), Vector2.ONE)
-		if xform != Transform3D.IDENTITY:
+		if world_projected.has(str(f.get("material", ""))):
+			var axes := paraxial_axes(normal.normalized())
+			u_axis = axes[0]
+			v_axis = axes[1]
+			offset = Vector2.ZERO
+			uv_scale = Vector2.ONE
+		elif xform != Transform3D.IDENTITY:
 			# Keep textures locked to instance geometry.
 			var inv_t := xform.basis.inverse().transposed()
 			var t := xform.origin
