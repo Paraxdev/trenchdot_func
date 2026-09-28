@@ -20,7 +20,14 @@ class_properties = Dictionary[String, Variant]({
 "fixture_off": {
 "hide": "hide",
 "dark (emission off)": "dark"
-}
+},
+"bake_mode": {
+"auto": "auto",
+"baked": "baked",
+"bounce only": "bounce",
+"real time": "realtime"
+},
+"light_size": 0.0
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -31,7 +38,9 @@ class_property_descriptions = Dictionary[String, Variant]({
 "start_on": "Starts switched on",
 "shadows": "Casts shadows, costs more to render",
 "fixture": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off",
-"fixture_off": ["What a fixture does while the light is off", "hide"]
+"fixture_off": ["What a fixture does while the light is off", "hide"],
+"bake_mode": ["How Bake Lighting treats the light. Auto bakes it unless a targetname or start_on 0 lets I/O switch it, bounce bakes only its bounced light and keeps the direct light real time", "auto"],
+"light_size": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(1, 0.9019608, 0.3019608, 1),

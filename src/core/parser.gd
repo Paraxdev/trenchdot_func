@@ -12,6 +12,9 @@ const _ParseData	:= FuncGodotData.ParseData
 ## It is connected to [method FuncGodotUtil.print_profile_info] method if [member FuncGodotMap.build_flags] SHOW_PROFILE_INFO flag is set.
 signal declare_step(step: String)
 
+## Keep the lighting baked in the TrenchDot editor, see [member FuncGodotMap.use_baked_lighting].
+var use_baked_lighting := true
+
 ## Parses the .tdm map file, generating entity and group data and sub-data.
 func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _ParseData:
 	declare_step.emit("Loading map file %s" % map_file)
@@ -34,7 +37,7 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 ## [param source_path] resolves relative prefab paths.
 func parse_tdm(map: Variant, map_settings: FuncGodotMapSettings, source_path: String) -> _ParseData:
 	var json: Variant = JSON.parse_string(map) if map is String else map
-	var parse_data := TrenchDotParser.parse_dict(json, map_settings, _ParseData.new(), source_path)
+	var parse_data := TrenchDotParser.parse_dict(json, map_settings, _ParseData.new(), source_path, use_baked_lighting)
 	if parse_data == null:
 		printerr("Error: Failed to parse map (%s)" % source_path)
 		return _ParseData.new()

@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/trenchdot/entities/td_reflection_probe.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "env_reflection_probe"
+description = "The brush becomes the box of a ReflectionProbe, which captures its surroundings for reflections inside it"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"intensity": 1.0,
+"update": {
+"once": "once",
+"always": "always"
+},
+"box_projection": true,
+"interior": false,
+"max_distance": 0.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"intensity": "Brightness of the reflections",
+"update": ["Capture once when the scene starts, or every frame for moving objects (costly)", "once"],
+"box_projection": "Lines reflections up with the box walls, good for rooms",
+"interior": "Leaves the sky out, for rooms without windows",
+"max_distance": "Meters the probe sees past its box, 0 for the box only"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.5019608, 0.83137256, 1, 1)
+})
+node_class = "ReflectionProbe"

@@ -62,6 +62,10 @@ class Context:
 	var name_prefix := ""
 	## Brushes and meshes waiting to be converted, see [method TrenchDotParser._convert_geometry].
 	var geometry: Array[Dictionary] = []
+	## The map's baked lighting, see [method TrenchDotLightmap.decode]. Empty when it has none or it is not used.
+	var lightmap: Dictionary = {}
+	## Names of the textures laid out by world projection, see [method TrenchDotParser._texture_settings].
+	var world_projected: Dictionary = {}
 
 
 static func parse(text: String, map_settings: FuncGodotMapSettings, parse_data: _ParseData, map_path: String = "") -> _ParseData:
@@ -69,14 +73,19 @@ static func parse(text: String, map_settings: FuncGodotMapSettings, parse_data: 
 
 
 ## Like [method parse] for a map that is already parsed JSON, e.g. the live model of the TrenchDot editor.
-static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_data: _ParseData, map_path: String = "") -> _ParseData:
+## [param use_lightmap] false ignores the lighting baked in the editor.
+static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_data: _ParseData, map_path: String = "", use_lightmap := true) -> _ParseData:
 	if not _readable(json, map_path):
 		return null
 	var ctx := Context.new()
 	ctx.map_settings = map_settings
 	ctx.parse_data = parse_data
 	ctx.map_path = map_path
+	if use_lightmap:
+		ctx.lightmap = TrenchDotLightmap.decode(json.get("lightmap"))
+		parse_data.lightmap = ctx.lightmap
 
+	_texture_settings(ctx, json.get("textures"))
 	var world := _EntityData.new()
 	world.properties["classname"] = "worldspawn"
 	for key in json.get("properties", {}):
@@ -92,6 +101,31 @@ static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_
 	_convert_geometry(ctx)
 	return parse_data
 
+
+## Reads the settings the map keeps per texture: a repeat size in map units that replaces the texture's own, and
+## world projection, which ignores each face's alignment. Baking settings only matter to the editor's bake.
+static func _texture_settings(ctx: Context, textures: Variant) -> void:
+	if not textures is Dictionary:
+		return
+	for name in textures:
+		var settings: Variant = textures[name]
+		if not settings is Dictionary:
+			continue
+		var size := vec2(settings.get("size"), Vector2.ZERO)
+		if size.x > 0.0 and size.y > 0.0:
+			ctx.parse_data.texture_sizes[str(name)] = size
+		if settings.get("projection", "face") == "world":
+			ctx.world_projected[str(name)] = true
+
+## The texture axes the editor gives a face with [param normal] when it is reset, in Godot space, see paraxial_axes
+## in crates/td_geom/src/uv.rs.
+static func paraxial_axes(normal: Vector3) -> Array[Vector3]:
+	var a := normal.abs()
+	if a.x >= a.y and a.x >= a.z:
+		return [Vector3.FORWARD if normal.x >= 0.0 else Vector3.BACK, Vector3.DOWN]
+	if a.y >= a.z:
+		return [Vector3.RIGHT, Vector3.BACK]
+	return [Vector3.RIGHT if normal.z >= 0.0 else Vector3.LEFT, Vector3.DOWN]
 
 ## Refuses what the editor refuses to open: another format, or a version newer than this importer knows.
 static func _readable(json: Variant, path: String) -> bool:
@@ -125,9 +159,12 @@ static func _convert_geometry(ctx: Context) -> void:
 		if node.get("type", "") == "mesh":
 			brush = TrenchDotMesh.parse(node, job["xform"], ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
 		else:
-			brush = _parse_brush(ctx.map_settings, job["xform"], node)
+			brush = _parse_brush(ctx.map_settings, job["xform"], node, ctx.world_projected)
 		if brush:
 			brush.node_id = int(node.get("id", 0)) + int(job["ns"]) * 1000000
+			# Only the map's own nodes were baked, prefab contents are the same node ids in another file.
+			if int(job["ns"]) == 0 and not ctx.lightmap.is_empty():
+				_apply_charts(brush, ctx.lightmap["charts"].get(int(node.get("id", 0)), {}), ctx.map_settings.scale_factor)
 		results[i] = brush
 	if TrenchDotBuild.threaded() and jobs.size() >= 32:
 		var task := WorkerThreadPool.add_group_task(convert, jobs.size(), -1, false, "Convert TrenchDot brushes")
@@ -144,7 +181,33 @@ static func _convert_geometry(ctx: Context) -> void:
 		for k in range(entity.brushes.size() - 1, -1, -1):
 			if entity.brushes[k] == null:
 				entity.brushes.remove_at(k)
+		if not ctx.lightmap.is_empty():
+			_fill_charts(entity, TrenchDotLightmap.fallback_rows(ctx.lightmap))
 	jobs.clear()
+
+
+## Gives each face of [param brush] its light map rows in id space, keyed by the face's index in the map node.
+static func _apply_charts(brush: _BrushData, charts: Dictionary, scale: float) -> void:
+	if charts.is_empty():
+		return
+	for face in brush.faces:
+		if charts.has(face.source_index):
+			face.lightmap_rows = TrenchDotLightmap.id_rows(charts[face.source_index], scale)
+
+
+## Marks [param entity] baked when any of its faces has light map rows, and points its other faces at the fallback
+## row, since a mesh either takes its lighting from the light map everywhere or nowhere.
+static func _fill_charts(entity: _EntityData, fallback: PackedFloat32Array) -> void:
+	for brush in entity.brushes:
+		for face in brush.faces:
+			if not face.lightmap_rows.is_empty():
+				entity.baked = true
+	if not entity.baked:
+		return
+	for brush in entity.brushes:
+		for face in brush.faces:
+			if face.lightmap_rows.is_empty():
+				face.lightmap_rows = fallback
 
 
 static func _make_group(ctx: Context, node: Dictionary, parent: _GroupData, is_layer: bool) -> _GroupData:
@@ -179,7 +242,12 @@ static func _parse_node(ctx: Context, node: Dictionary, group: _GroupData) -> vo
 		"terrain":
 			# Terrains stay axis aligned: an instance rotates the terrain's center about the instance origin, like
 			# Terrain::transformed in the editor, but never the grid itself. TrenchDotTerrain.create does the rotation.
-			ctx.parse_data.terrains.append({ "data": node, "xform": ctx.xform, "group": group, "id": int(node.get("id", 0)) + ctx.instance_ns * 1000000 })
+			var terrain := { "data": node, "xform": ctx.xform, "group": group, "id": int(node.get("id", 0)) + ctx.instance_ns * 1000000 }
+			if ctx.instance_ns == 0 and not ctx.lightmap.is_empty():
+				var charts: Dictionary = ctx.lightmap["charts"].get(int(node.get("id", 0)), {})
+				if charts.has(0):
+					terrain["lightmap_rows"] = charts[0]
+			ctx.parse_data.terrains.append(terrain)
 		"scatter":
 			ctx.parse_data.scatters.append({ "data": node, "xform": ctx.xform, "group": group, "id": int(node.get("id", 0)) + ctx.instance_ns * 1000000 })
 		"entity":
@@ -229,7 +297,7 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 
 
 ## Runs on worker threads, so it only creates data.
-static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D, node: Dictionary) -> _BrushData:
+static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D, node: Dictionary, world_projected: Dictionary = {}) -> _BrushData:
 	var raw_vertices: Array = node.get("vertices", [])
 	var faces: Array = node.get("faces", [])
 	if raw_vertices.size() < 4 or faces.size() < 4:
@@ -244,7 +312,8 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 	brush.exact = true
 	var origin_texture := map_settings.origin_texture
 	brush.origin = true
-	for f in faces:
+	for face_index in faces.size():
+		var f: Dictionary = faces[face_index]
 		var indices: Array = f.get("indices", [])
 		if indices.size() < 3:
 			continue
@@ -274,6 +343,7 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 		var plane := Plane(id_normal, id_normal.dot(id_centroid))
 
 		var face := _FaceData.new()
+		face.source_index = face_index
 		face.plane = plane
 		face.texture = str(f.get("material", ""))
 		var face_props: Dictionary = f.get("props", {})
@@ -291,7 +361,13 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 		var v_axis := vec3(uv.get("v_axis"), Vector3.BACK)
 		var offset := vec2(uv.get("offset"), Vector2.ZERO)
 		var uv_scale := vec2(uv.get("scale"), Vector2.ONE)
-		if xform != Transform3D.IDENTITY:
+		if world_projected.has(str(f.get("material", ""))):
+			var axes := paraxial_axes(normal.normalized())
+			u_axis = axes[0]
+			v_axis = axes[1]
+			offset = Vector2.ZERO
+			uv_scale = Vector2.ONE
+		elif xform != Transform3D.IDENTITY:
 			# Keep textures locked to instance geometry.
 			var inv_t := xform.basis.inverse().transposed()
 			var t := xform.origin

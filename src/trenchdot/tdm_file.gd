@@ -40,7 +40,8 @@ static func is_binary(bytes: PackedByteArray) -> bool:
 
 ## Decodes a whole file. [code]map[/code] is the map in the shape JSON.parse_string gives for a JSON map, except that
 ## terrain [code]heights[/code], [code]splat[/code] and [code]holes[/code] are PackedByteArray instead of base64 and long
-## number arrays may be packed arrays. [code]problems[/code] says what a damaged file lost, nodes whose parent was lost
+## number arrays may be packed arrays. The baked lighting of the LMAP chunk is under [code]lightmap[/code], see
+## [TrenchDotLightmap]. [code]problems[/code] says what a damaged file lost, nodes whose parent was lost
 ## sit in a layer named [constant RECOVERED_LAYER]. [code]content[/code] is the content id of the END chunk, 0 for JSON.
 static func decode(bytes: PackedByteArray) -> Dictionary:
 	if not is_binary(bytes):
@@ -56,6 +57,7 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 	var problems := PackedStringArray()
 	var head = null
 	var end = null
+	var lightmap = null
 	var nodes := []
 	var parents := PackedInt64Array()
 	var chunks := 0
@@ -80,17 +82,23 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 		pos = start + stored
 		chunks += 1
 		var tag: String = h["tag"]
-		if not tag in ["HEAD", "NODE", "END "]:
+		if not tag in ["HEAD", "NODE", "END ", "LMAP"]:
 			continue
 		var value = _payload(bytes.slice(start, pos), h)
 		if not value is Dictionary:
-			var lost: String = { "NODE": ", the nodes stored in it are lost", "HEAD": ", the worldspawn properties and editor state are lost" }.get(tag, "")
+			var lost: String = {
+				"NODE": ", the nodes stored in it are lost",
+				"HEAD": ", the worldspawn properties and editor state are lost",
+				"LMAP": ", the baked lighting is lost, bake it again in the editor",
+			}.get(tag, "")
 			problems.append("the %s chunk at byte %d is damaged%s" % [tag.strip_edges(), at, lost])
 			damaged += 1
 			continue
 		match tag:
 			"HEAD":
 				head = value
+			"LMAP":
+				lightmap = value
 			"NODE":
 				var batch_nodes: Array = value.get("nodes", [])
 				var batch_parents: PackedInt64Array = value.get("parents", PackedInt64Array())
@@ -143,6 +151,8 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 		problems.append("%d nodes whose parent was lost were moved to the layer \"%s\"" % [orphans.size(), RECOVERED_LAYER])
 	var map: Dictionary = head
 	map["layers"] = layers
+	if lightmap != null:
+		map["lightmap"] = lightmap
 	return { "map": map, "error": "", "problems": problems, "content": int(end.get("content", 0)) if end != null else 0 }
 
 ## The content id a scene built from [param path] records, see [constant TrenchDotBuild.SOURCE_HASH_META]. For a

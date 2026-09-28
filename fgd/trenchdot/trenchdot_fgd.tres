@@ -1,10 +1,13 @@
-[gd_resource type="Resource" script_class="TrenchDotFGDFile" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="TrenchDotFGDFile" load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://addons/func_godot/src/trenchdot/trenchdot_fgd_file.gd" id="1_fgd"]
 [ext_resource type="Resource" path="res://addons/func_godot/fgd/trenchdot/info_player_start.tres" id="2_info_player_start"]
 [ext_resource type="Resource" path="res://addons/func_godot/fgd/trenchdot/light.tres" id="3_light"]
 [ext_resource type="Resource" path="res://addons/func_godot/fgd/trenchdot/light_spot.tres" id="4_light_spot"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/trenchdot/light_probe.tres" id="5_light_probe"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/trenchdot/env_reflection_probe.tres" id="6_env_reflection_probe"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/trenchdot/env_voxel_gi.tres" id="7_env_voxel_gi"]
 
 [resource]
 script = ExtResource("1_fgd")
-entity_definitions = Array[Resource]([ExtResource("2_info_player_start"), ExtResource("3_light"), ExtResource("4_light_spot")])
+entity_definitions = Array[Resource]([ExtResource("2_info_player_start"), ExtResource("3_light"), ExtResource("4_light_spot"), ExtResource("5_light_probe"), ExtResource("6_env_reflection_probe"), ExtResource("7_env_voxel_gi")])

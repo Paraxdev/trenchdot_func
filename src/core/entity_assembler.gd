@@ -79,6 +79,8 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 			mesh_instance.gi_mode = definition.global_illumination_mode
 		mesh_instance.cast_shadow = definition.shadow_casting_setting
 		mesh_instance.layers = definition.render_layers
+		if data.baked:
+			mesh_instance.set_meta(TrenchDotLightmap.BAKED_META, true)
 		node.add_child(mesh_instance)
 		data.mesh_instance = mesh_instance
 		
@@ -109,7 +111,7 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 		if not (build_flags & FuncGodotMap.BuildFlags.DISABLE_SMOOTHING) and data.is_smooth_shaded(map_settings.entity_smoothing_property):
 			mesh_instance.mesh = FuncGodotUtil.smooth_mesh_by_angle(data.mesh, data.get_smoothing_angle(map_settings.entity_smoothing_angle_property))
 
-			if data.is_gi_enabled() and (build_flags & FuncGodotMap.BuildFlags.UNWRAP_UV2):
+			if not data.baked and data.is_gi_enabled() and (build_flags & FuncGodotMap.BuildFlags.UNWRAP_UV2):
 				mesh_instance.mesh.lightmap_unwrap(
 					Transform3D.IDENTITY,
 					map_settings.uv_unwrap_texel_size * map_settings.scale_factor

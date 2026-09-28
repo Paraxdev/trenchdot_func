@@ -49,6 +49,10 @@ class FaceData extends RefCounted:
 	var disp_colors: PackedColorArray = []
 	## Covered by a coplanar face of another solid, left out of the visual mesh but kept for collision.
 	var render_hidden: bool = false
+	## Index of the face in its TrenchDot brush or mesh node, which the baked lighting is keyed by.
+	var source_index: int = -1
+	## Light map coordinate rows for id space positions, see [method TrenchDotLightmap.uv2]. Empty when not baked.
+	var lightmap_rows: PackedFloat32Array = []
 
 	func is_displacement() -> bool:
 		return not disp_indices.is_empty()
@@ -178,6 +182,8 @@ class EntityData extends RefCounted:
 	var node: Node = null
 	## The map node id, written to the generated node for live updates. -1 for entities made without one.
 	var node_id: int = -1
+	## Its faces carry light map rows, so its mesh gets UV2 and uses the lighting baked in the editor.
+	var baked: bool = false
 
 	## Checks the entity's FGD resource definition, returning whether the Solid Class has a [MeshInstance3D] built for it.
 	func is_visual() -> bool:
@@ -228,3 +234,7 @@ class ParseData:
 	var terrains: Array[Dictionary] = []
 	## Scatter sets: {"data": Dictionary, "xform": Transform3D (map units), "group": GroupData, "id": int}.
 	var scatters: Array[Dictionary] = []
+	## Lighting baked in the TrenchDot editor, see [method TrenchDotLightmap.decode].
+	var lightmap: Dictionary = {}
+	## Map units one repeat of a texture covers, by texture name, from the map's texture settings.
+	var texture_sizes: Dictionary[String, Vector2] = {}

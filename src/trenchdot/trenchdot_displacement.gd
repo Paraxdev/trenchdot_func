@@ -55,6 +55,7 @@ static func append_surface(arrays: Array, face: FuncGodotData.FaceData, xf: Call
 	var count := face.disp_vertices.size()
 	var explicit_uvs := face.disp_uvs.size() == count
 	var explicit_colors := face.disp_colors.size() == count
+	var baked: bool = arrays[Mesh.ARRAY_TEX_UV2] != null
 	for k in count:
 		arrays[Mesh.ARRAY_VERTEX].append(xf.call(face.disp_vertices[k]))
 		arrays[Mesh.ARRAY_NORMAL].append(FuncGodotUtil.id_to_opengl(face.disp_normals[k]))
@@ -62,6 +63,8 @@ static func append_surface(arrays: Array, face: FuncGodotData.FaceData, xf: Call
 			arrays[Mesh.ARRAY_TEX_UV].append(face.disp_uvs[k])
 		else:
 			arrays[Mesh.ARRAY_TEX_UV].append(FuncGodotUtil.get_face_vertex_uv(face.disp_base[k], face, texture_size))
+		if baked:
+			arrays[Mesh.ARRAY_TEX_UV2].append(TrenchDotLightmap.uv2(face.lightmap_rows, face.disp_vertices[k]))
 		for j in 4:
 			arrays[Mesh.ARRAY_TANGENT].append(face.tangents[j] if face.tangents.size() >= 4 else 0.0)
 		if use_colors:

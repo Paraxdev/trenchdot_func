@@ -102,7 +102,8 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 	# Face corner lists, normals and the faces around each vertex.
 	var faces: Array[Dictionary] = []
 	var vertex_faces: Dictionary = {}
-	for f in raw_faces:
+	for source_index in raw_faces.size():
+		var f: Dictionary = raw_faces[source_index]
 		var indices: Array = f.get("indices", [])
 		var uvs: Array = f.get("uvs", [])
 		var colors: Array = f.get("colors", [])
@@ -128,7 +129,7 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 		if raw_normal.length_squared() < 1e-12:
 			continue
 		var fi := faces.size()
-		faces.append({ "indices": indices, "points": pts, "normal": raw_normal, "unit": raw_normal.normalized(), "uvs": uvs, "colors": colors, "src": f })
+		faces.append({ "indices": indices, "points": pts, "normal": raw_normal, "unit": raw_normal.normalized(), "uvs": uvs, "colors": colors, "src": f, "source": source_index })
 		for idx in indices:
 			if not vertex_faces.has(int(idx)):
 				vertex_faces[int(idx)] = []
@@ -156,6 +157,7 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 		var src: Dictionary = face_info["src"]
 
 		var face := _FaceData.new()
+		face.source_index = face_info["source"]
 		var centroid := Vector3.ZERO
 		for p in pts:
 			centroid += p

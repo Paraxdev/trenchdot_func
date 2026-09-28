@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/trenchdot/entities/td_voxel_gi.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "env_voxel_gi"
+description = "The brush becomes the box of a VoxelGI, real time bounce light that follows moving lights and objects. It is baked in the Godot editor when the map is built"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"subdiv": {
+"64": 64,
+"128": 128,
+"256": 256,
+"512": 512
+},
+"energy": 1.0,
+"bake_on_build": true
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"subdiv": ["Voxels along the longest side, more is sharper and slower", 128],
+"energy": "Brightness of the bounce light",
+"bake_on_build": "Bakes the volume in the Godot editor each time the map is built"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7019608, 1, 0.5019608, 1)
+})
+node_class = "VoxelGI"
