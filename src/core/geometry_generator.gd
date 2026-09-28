@@ -373,6 +373,8 @@ func generate_entity_surfaces(entity_index: int) -> void:
 		var use_colors := faces.any(func(f: _FaceData) -> bool: return f.has_colors()) or TrenchDotBlend.is_blend(texture_name)
 		if use_colors:
 			arrays[Mesh.ARRAY_COLOR] = PackedColorArray()
+		if entity.baked:
+			arrays[Mesh.ARRAY_TEX_UV2] = PackedVector2Array()
 
 		# Begin fresh index offset for this subarray
 		var index_offset: int = 0
@@ -518,6 +520,8 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				arrays[ArrayMesh.ARRAY_NORMAL].append(FuncGodotUtil.id_to_opengl(face.normals[i]))
 				var tx_sz: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * map_settings.inverse_scale_factor)
 				arrays[ArrayMesh.ARRAY_TEX_UV].append(FuncGodotUtil.get_face_vertex_uv(v, face, tx_sz))
+				if entity.baked:
+					arrays[ArrayMesh.ARRAY_TEX_UV2].append(TrenchDotLightmap.uv2(face.lightmap_rows, v))
 				
 				for j in 4:
 					arrays[ArrayMesh.ARRAY_TANGENT].append(face.tangents[(i * 4) + j])
@@ -610,7 +614,7 @@ func unwrap_uv2s(entity_index: int, texel_size: float) -> void:
 	# NOTE: This skips smoothed meshes as they need to be unwrapped after smoothing.
 	# Ideally smoothing will be performed here in GeoGen before this process.
 	# For now, since it occurs in EntityAssembler, skip it.
-	if entity.mesh and entity.is_gi_enabled() and not entity.is_smooth_shaded(map_settings.entity_smoothing_property):
+	if entity.mesh and not entity.baked and entity.is_gi_enabled() and not entity.is_smooth_shaded(map_settings.entity_smoothing_property):
 		entity.mesh.lightmap_unwrap(Transform3D.IDENTITY, texel_size)
 
 # Main build process

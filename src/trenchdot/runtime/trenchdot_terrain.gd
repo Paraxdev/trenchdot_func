@@ -138,7 +138,11 @@ static func build_all(map_node: Node3D, terrains: Array[Dictionary], settings: F
 		var parent: Node = map_node
 		if settings.use_groups_hierarchy and group and group.node:
 			parent = group.node
-		var terrain := build_one(map_node, parent, entry["data"], entry.get("xform", Transform3D.IDENTITY), int(entry.get("id", out.size())), settings)
+		var data: Dictionary = entry["data"]
+		if entry.has("lightmap_rows"):
+			data = data.duplicate()
+			data["lightmap_rows"] = entry["lightmap_rows"]
+		var terrain := build_one(map_node, parent, data, entry.get("xform", Transform3D.IDENTITY), int(entry.get("id", out.size())), settings)
 		if terrain:
 			out.append(terrain)
 	return out
@@ -167,7 +171,7 @@ static func build_one(map_node: Node, parent: Node, data: Dictionary, xform: Var
 	return terrain
 
 ## Surface arrays of the chunk starting at cell [param start], empty when every cell is a hole.
-static func _chunk_arrays(start: Vector2i, chunk_cells: int, res: Vector2i, cell: float, heights: PackedFloat32Array, splat: PackedByteArray, holes: PackedByteArray) -> Array:
+static func _chunk_arrays(start: Vector2i, chunk_cells: int, res: Vector2i, cell: float, heights: PackedFloat32Array, splat: PackedByteArray, holes: PackedByteArray, lightmap_rows := PackedFloat32Array()) -> Array:
 	var w := res.x
 	var cells := Vector2i(res.x - 1, res.y - 1)
 	var ci := start.x
@@ -178,10 +182,14 @@ static func _chunk_arrays(start: Vector2i, chunk_cells: int, res: Vector2i, cell
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 	var uvs := PackedVector2Array()
+	var baked := not lightmap_rows.is_empty()
+	var uv2s := PackedVector2Array()
 	for j in range(cj, cj + ch + 1):
 		for i in range(ci, ci + cw + 1):
 			var here := heights[j * w + i]
 			verts.append(Vector3(i * cell, here, j * cell))
+			if baked:
+				uv2s.append(TrenchDotLightmap.uv2(lightmap_rows, verts[verts.size() - 1]))
 			var dx: float = heights[j * w + mini(i + 1, res.x - 1)] - heights[j * w + maxi(i - 1, 0)]
 			var dz: float = heights[mini(j + 1, res.y - 1) * w + i] - heights[maxi(j - 1, 0) * w + i]
 			normals.append(Vector3(-dx, 2.0 * cell, -dz).normalized())
@@ -214,6 +222,8 @@ static func _chunk_arrays(start: Vector2i, chunk_cells: int, res: Vector2i, cell
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	if baked:
+		arrays[Mesh.ARRAY_TEX_UV2] = uv2s
 	arrays[Mesh.ARRAY_INDEX] = indices
 	return arrays
 
@@ -285,10 +295,14 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 		for ci in range(0, cells.x, chunk_cells):
 			chunks.append(Vector2i(ci, cj))
 	var heights := t.heights
+	# Only a terrain of the map itself was baked, and those are never moved by an instance transform.
+	var lightmap_rows := PackedFloat32Array()
+	if data.has("lightmap_rows"):
+		lightmap_rows = TrenchDotLightmap.local_rows(data["lightmap_rows"], scale, t.position)
 	var surfaces := []
 	surfaces.resize(chunks.size())
 	var build_chunk := func(c: int) -> void:
-		surfaces[c] = _chunk_arrays(chunks[c], chunk_cells, res, cell, heights, splat, holes)
+		surfaces[c] = _chunk_arrays(chunks[c], chunk_cells, res, cell, heights, splat, holes, lightmap_rows)
 	# Chunk arrays are plain data, only the ArrayMesh resources are created on this thread.
 	if TrenchDotBuild.threaded() and chunks.size() > 1:
 		var task := WorkerThreadPool.add_group_task(build_chunk, chunks.size(), -1, false, "Build TrenchDot terrain chunks")
@@ -305,6 +319,8 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 		var mi := MeshInstance3D.new()
 		mi.name = "chunk_%d_%d" % [chunks[c].x / chunk_cells, chunks[c].y / chunk_cells]
 		mi.mesh = mesh
+		if not lightmap_rows.is_empty():
+			mi.set_meta(TrenchDotLightmap.BAKED_META, true)
 		t.add_child(mi)
 
 	# HeightMapShape3D can only punch holes by setting a whole vertex to NAN, which would also remove its other,

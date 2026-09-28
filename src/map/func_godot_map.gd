@@ -56,6 +56,11 @@ var _map_file_internal: String = ""
 ## Measured in Godot units, not Quake units.
 @export_range(256.0, 2048.0, 128.0) var hyperplane_size: float = 512.0
 
+## Light the map with what Bake Lighting in the TrenchDot editor stored in it: the build adds a [LightmapGI] with
+## that bake and sets each light's bake mode from its bake_mode key. Turn it off to bake with Godot's own
+## [LightmapGI] or another lightmapper, the Unwrap UV2 build flag then gives the meshes their UV2.
+@export var use_baked_lighting: bool = true
+
 ## In the running game, draw each material of the map once off screen after it builds or loads, so its render
 ## pipelines compile then and not on the first frame an area shows. [signal warmed_up] follows when that is done.
 ## Turn it off to call [method TrenchDotWarmUp.warm_shaders] yourself, for example once after all maps and the game's
@@ -164,6 +169,7 @@ func _build(text: String) -> TrenchDotBuildReport:
 
 	# Parse and collect map data
 	var parser := FuncGodotParser.new()
+	parser.use_baked_lighting = use_baked_lighting
 	parser.declare_step.connect(report.step)
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nPARSER")
@@ -226,6 +232,10 @@ func _build(text: String) -> TrenchDotBuildReport:
 	var streamer := TrenchDotStreamer.build(self, entities[0].properties, map_settings)
 	if streamer:
 		streamer.rebuild()
+	# After the streamer, which splits meshes into the pieces the lightmap has to know.
+	if not parse_data.lightmap.is_empty():
+		report.step("Applying the baked lighting")
+		TrenchDotLightmap.build(self, parse_data.lightmap, entities)
 
 	TrenchDotOverlay.notify_built(self)
 	report.finish()
