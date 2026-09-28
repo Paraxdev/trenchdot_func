@@ -150,13 +150,37 @@ static func _cs_default(value: String, type: String) -> String:
 static func _gd_num(f: float) -> String:
 	return str(int(f)) if f == floorf(f) and absf(f) < 1.0e9 else str(f)
 
-static func _params(text: String) -> String:
+## An input or output entry for a C# member, its argument names and types in [code]type[/code] as the game config lists
+## them.
+static func _io(io_name: String, params_text: String) -> Dictionary:
 	var names: PackedStringArray = []
-	for part in text.split(",", false):
-		var bits := part.strip_edges().split(" ", false)
+	var types: PackedStringArray = []
+	for part in params_text.split(",", false):
+		var bits := part.split("=")[0].strip_edges().split(" ", false)
 		if bits.size() >= 2:
-			names.append(bits[bits.size() - 1].split("=")[0].strip_edges().to_snake_case())
-	return ", ".join(names)
+			names.append(bits[bits.size() - 1].to_snake_case())
+			types.append(_io_type(" ".join(bits.slice(0, bits.size() - 1))))
+	var io := { "name": io_name.to_snake_case(), "parameter": ", ".join(names) }
+	if not types.is_empty():
+		io["type"] = ", ".join(types)
+	return io
+
+static func _io_type(cs: String) -> String:
+	var short := cs.strip_edges().get_slice(".", cs.strip_edges().count("."))
+	match short:
+		"bool":
+			return "bool"
+		"int", "long", "uint", "short", "byte":
+			return "int"
+		"float", "double":
+			return "float"
+		"string", "StringName":
+			return "string"
+		"Vector3":
+			return "vector3"
+		"Color":
+			return "color"
+	return "node" if ClassDB.class_exists(short) and ClassDB.is_parent_class(short, "Node") else "variant"
 
 ## Entity descriptions found in one C# source text.
 static func parse_source(text: String, path: String = "") -> Array[Dictionary]:
@@ -188,7 +212,7 @@ static func parse_source(text: String, path: String = "") -> Array[Dictionary]:
 		if size.size() >= 6:
 			entry["size"] = [[size[0], size[1], size[2]], [size[3], size[4], size[5]]]
 		for s in RegEx.create_from_string("\\[Signal\\]\\s*public\\s+delegate\\s+void\\s+(\\w+)EventHandler\\s*\\(([^)]*)\\)").search_all(body):
-			entry["outputs"].append({ "name": s.get_string(1).to_snake_case(), "parameter": _params(s.get_string(2)) })
+			entry["outputs"].append(_io(s.get_string(1), s.get_string(2)))
 		var member_rx := RegEx.create_from_string("\\[Export[^\\]]*\\]\\s*public\\s+([\\w<>.]+)\\s+(\\w+)\\s*(?:\\{[^}]*\\})?\\s*(?:=\\s*([^;\\n]+))?")
 		for e in member_rx.search_all(body):
 			var type := _cs_type(e.get_string(1))
@@ -201,7 +225,7 @@ static func parse_source(text: String, path: String = "") -> Array[Dictionary]:
 		var marked := RegEx.create_from_string("\\[TrenchDotInput[^\\]]*\\]\\s*public\\s+[\\w<>.]+\\s+(\\w+)\\s*\\(([^)]*)\\)").search_all(body)
 		var methods := marked if not marked.is_empty() else RegEx.create_from_string("public\\s+void\\s+([A-Z]\\w*)\\s*\\(([^)]*)\\)").search_all(body)
 		for meth in methods:
-			entry["inputs"].append({ "name": meth.get_string(1).to_snake_case(), "parameter": _params(meth.get_string(2)) })
+			entry["inputs"].append(_io(meth.get_string(1), meth.get_string(2)))
 		if not entry["properties"].any(func(p): return p["name"] == "targetname"):
 			entry["properties"].push_front({ "name": "targetname", "type": "target_source", "default": "", "description": "Name" })
 		out.append(entry)
@@ -226,9 +250,9 @@ static func class_io(class_name_text: String, dirs: PackedStringArray = source_d
 		var outputs: Array = []
 		var inputs: Array = []
 		for s in RegEx.create_from_string("\\[Signal\\]\\s*public\\s+delegate\\s+void\\s+(\\w+)EventHandler\\s*\\(([^)]*)\\)").search_all(body):
-			outputs.append({ "name": s.get_string(1).to_snake_case(), "parameter": _params(s.get_string(2)) })
+			outputs.append(_io(s.get_string(1), s.get_string(2)))
 		for meth in RegEx.create_from_string("public\\s+void\\s+([A-Z]\\w*)\\s*\\(([^)]*)\\)").search_all(body):
-			inputs.append({ "name": meth.get_string(1).to_snake_case(), "parameter": _params(meth.get_string(2)) })
+			inputs.append(_io(meth.get_string(1), meth.get_string(2)))
 		return { "outputs": outputs, "inputs": inputs, "script": f }
 	return {}
 

@@ -100,20 +100,57 @@ static func _property_def(name: String, value: Variant, description: Variant) ->
 		def["type"] = "target_destination"
 	return def
 
+## An input or output entry: its argument names and, in [code]type[/code], one type name for each of them (bool, int,
+## float, string, vector3, color, node or variant), which the editor uses to offer the right parameter field.
+static func _io(io_name: String, args: Array) -> Dictionary:
+	var io := { "name": io_name, "parameter": ", ".join(args.map(func(a): return a["name"])) }
+	if not args.is_empty():
+		io["type"] = ", ".join(args.map(_io_type))
+	return io
+
+static func _io_type(arg: Dictionary) -> String:
+	match int(arg.get("type", TYPE_NIL)):
+		TYPE_BOOL:
+			return "bool"
+		TYPE_INT:
+			return "int"
+		TYPE_FLOAT:
+			return "float"
+		TYPE_STRING, TYPE_STRING_NAME:
+			return "string"
+		TYPE_VECTOR3:
+			return "vector3"
+		TYPE_COLOR:
+			return "color"
+		TYPE_OBJECT:
+			return "node" if _is_node_class(str(arg.get("class_name", ""))) else "variant"
+	return "variant"
+
+## True for Node and every engine or script class below it. An empty or unknown name is not one.
+static func _is_node_class(class_id: String) -> bool:
+	var bases := {}
+	for entry in ProjectSettings.get_global_class_list():
+		bases[str(entry["class"])] = str(entry["base"])
+	var seen := {}
+	while class_id != "" and not seen.has(class_id):
+		if ClassDB.class_exists(class_id):
+			return ClassDB.is_parent_class(class_id, "Node")
+		seen[class_id] = true
+		class_id = bases.get(class_id, "")
+	return false
+
 static func _script_io(script: Script, outputs: Array, inputs: Array) -> void:
 	if not script:
 		return
 	for s in script.get_script_signal_list():
-		var params: Array = s.get("args", []).map(func(a): return a["name"])
-		outputs.append({ "name": s["name"], "parameter": ", ".join(params) })
+		outputs.append(_io(s["name"], s.get("args", [])))
 	var seen := {}
 	for m in script.get_script_method_list():
 		var method_name: String = m["name"]
 		if method_name.begins_with("_") or seen.has(method_name):
 			continue
 		seen[method_name] = true
-		var params: Array = m.get("args", []).map(func(a): return a["name"])
-		inputs.append({ "name": method_name, "parameter": ", ".join(params) })
+		inputs.append(_io(method_name, m.get("args", [])))
 
 static func _class_io(node_class: String, outputs: Array) -> void:
 	if node_class == "" or not ClassDB.class_exists(node_class):
@@ -122,8 +159,7 @@ static func _class_io(node_class: String, outputs: Array) -> void:
 	# Walk up to (but not including) Node3D so e.g. Area3D reports body_entered but not tree_entered.
 	while cls != "" and cls != "Node3D" and cls != "Node" and cls != "Object":
 		for s in ClassDB.class_get_signal_list(cls, true):
-			var params: Array = s.get("args", []).map(func(a): return a["name"])
-			outputs.append({ "name": s["name"], "parameter": ", ".join(params) })
+			outputs.append(_io(s["name"], s.get("args", [])))
 		cls = ClassDB.get_parent_class(cls)
 
 ## Where each classname of [param fgd] is defined, as an Array of res:// paths in the order FuncGodot merges them: base
