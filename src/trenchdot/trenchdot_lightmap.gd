@@ -4,6 +4,9 @@ class_name TrenchDotLightmap extends RefCounted
 ## crates/td_doc/src/lightmap.rs. The build gives baked meshes those coordinates as UV2 and registers them with a
 ## [LightmapGIData] filled from the atlases, so nothing is baked again in Godot.
 ##
+## Light probes baked with it light moving objects. Their points and BSP planes come in map units and are scaled to
+## meters here, the rest goes to [method LightmapGIData._set_probe_data] as Godot's own bake stores it.
+##
 ## The atlas gets one extra texel row at the bottom holding the average light. Faces of a baked mesh that have no
 ## chart of their own, because they changed after the bake, point at it instead of at some other surface's light.
 
@@ -14,7 +17,8 @@ const _VERSION := 1
 
 ## The [code]lightmap[/code] entry of a decoded map in one shape, whichever layout it came from. Empty when the map
 ## has no usable bake. Keys: width, height, light (RGB half floats), shadow, fallback (Color), charts (node id to
-## face to eight editor space row values, already squeezed for the fallback row).
+## face to eight editor space row values, already squeezed for the fallback row), probes (see [method _probes], empty
+## when the bake has none).
 static func decode(raw: Variant) -> Dictionary:
 	if not raw is Dictionary or int(raw.get("version", 0)) > _VERSION:
 		return {}
@@ -51,6 +55,62 @@ static func decode(raw: Variant) -> Dictionary:
 		"shadow": shadow,
 		"fallback": Color(fallback[0], fallback[1], fallback[2]) if fallback.size() >= 3 else Color(0.2, 0.2, 0.2),
 		"charts": charts,
+		"probes": _probes(raw),
+	}
+
+## Probe columns of the chunk when they add up: points (map units), sh (nine RGB per point), tetrahedra (four point
+## indices each), bsp_planes (normal and distance in map units per node), bsp_children (over and under per node).
+static func _probes(raw: Dictionary) -> Dictionary:
+	var points := _floats(raw.get("probe_points"))
+	var sh := _floats(raw.get("probe_sh"))
+	var tetrahedra := _ints(raw.get("probe_tetrahedra"))
+	var planes := _floats(raw.get("probe_bsp_planes"))
+	var children := _ints(raw.get("probe_bsp_children"))
+	var n := points.size() / 3
+	var nodes := planes.size() / 4
+	if n < 4 or points.size() != n * 3 or sh.size() != n * 27 or tetrahedra.is_empty() or tetrahedra.size() % 4 != 0:
+		return {}
+	if nodes == 0 or planes.size() != nodes * 4 or children.size() != nodes * 2:
+		return {}
+	for i in tetrahedra:
+		if i < 0 or i >= n:
+			return {}
+	return { "points": points, "sh": sh, "tetrahedra": tetrahedra, "bsp_planes": planes, "bsp_children": children }
+
+## The dictionary [method LightmapGIData._set_probe_data] takes, for positions in meters [param scale] per map unit.
+static func probe_data(probes: Dictionary, scale: float) -> Dictionary:
+	var src: PackedFloat32Array = probes["points"]
+	var points := PackedVector3Array()
+	var bounds := AABB()
+	for k in src.size() / 3:
+		var p := Vector3(src[k * 3], src[k * 3 + 1], src[k * 3 + 2]) * scale
+		points.append(p)
+		bounds = AABB(p, Vector3.ZERO) if k == 0 else bounds.expand(p)
+	var sh_src: PackedFloat32Array = probes["sh"]
+	var sh := PackedColorArray()
+	for k in sh_src.size() / 3:
+		sh.append(Color(sh_src[k * 3], sh_src[k * 3 + 1], sh_src[k * 3 + 2]))
+	var tetrahedra := PackedInt32Array(Array(probes["tetrahedra"]))
+	# Godot keeps each BSP node as six int32: the plane's four floats by their bits, then the children.
+	var planes: PackedFloat32Array = probes["bsp_planes"]
+	var children: PackedInt64Array = probes["bsp_children"]
+	var nodes := planes.size() / 4
+	var bytes := PackedByteArray()
+	bytes.resize(nodes * 24)
+	for k in nodes:
+		for c in 3:
+			bytes.encode_float(k * 24 + c * 4, planes[k * 4 + c])
+		bytes.encode_float(k * 24 + 12, planes[k * 4 + 3] * scale)
+		bytes.encode_s32(k * 24 + 16, children[k * 2])
+		bytes.encode_s32(k * 24 + 20, children[k * 2 + 1])
+	return {
+		"bounds": bounds,
+		"points": points,
+		"sh": sh,
+		"tetrahedra": tetrahedra,
+		"bsp": bytes.to_int32_array(),
+		"interior": false,
+		"baked_exposure": 1.0,
 	}
 
 ## Rows that send every point to the fallback row.
@@ -129,6 +189,11 @@ static func build(map_node: Node3D, lightmap: Dictionary, entities: Array) -> Li
 	for mi in users:
 		mi.gi_mode = GeometryInstance3D.GI_MODE_STATIC
 		data.add_user(gi.get_path_to(mi), Rect2(0, 0, 1, 1), 0, -1)
+	if not lightmap.get("probes", {}).is_empty():
+		var scale := 1.0 / 32.0
+		if map_node is FuncGodotMap and map_node.map_settings:
+			scale = map_node.map_settings.scale_factor
+		data.call("_set_probe_data", probe_data(lightmap["probes"], scale))
 	gi.light_data = data
 
 	var sun_mode := LightmapGIData.SHADOWMASK_MODE_NONE

@@ -221,6 +221,8 @@ func _build(text: String) -> TrenchDotBuildReport:
 	report.check_entities(entities)
 	report.check_targets(entities, self)
 
+	TrenchDotProbes.fit_volumes(entities)
+
 	report.step("Building terrains")
 	TrenchDotTerrain.build_all(self, parse_data.terrains, map_settings)
 	report.step("Building scatter sets")
@@ -236,6 +238,8 @@ func _build(text: String) -> TrenchDotBuildReport:
 	if not parse_data.lightmap.is_empty():
 		report.step("Applying the baked lighting")
 		TrenchDotLightmap.build(self, parse_data.lightmap, entities)
+	# Last, a VoxelGI bakes the finished scene around it.
+	TrenchDotProbes.bake_voxel_gi(self)
 
 	TrenchDotOverlay.notify_built(self)
 	report.finish()
