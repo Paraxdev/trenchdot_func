@@ -67,7 +67,7 @@ func check_entities(data: Array[FuncGodotData.EntityData]) -> void:
 		missing_models[model].append(_entity_name(entity))
 
 ## Finds materials the build made from the placeholder texture, and faces textured with an editor tool texture the map
-## settings name differently, which then build as visible faces.
+## settings name differently. Those faces still build no mesh, but an origin brush no longer sets its entity origin.
 func check_textures(data: Array[FuncGodotData.EntityData], materials: Dictionary, settings: FuncGodotMapSettings) -> void:
 	var placeholder := load(FuncGodotUtil.default_texture_path)
 	for name: String in materials:
@@ -86,7 +86,7 @@ func check_textures(data: Array[FuncGodotData.EntityData], materials: Dictionary
 		for brush in entity.brushes:
 			for face in brush.faces:
 				var texture := face.texture.to_lower()
-				if tools.has(texture) and not unknown_tool_textures.has(texture) and not FuncGodotUtil.filter_face(texture, settings):
+				if tools.has(texture) and not unknown_tool_textures.has(texture) and str(settings.get(tools[texture] + "_texture")) != texture:
 					unknown_tool_textures[texture] = tools[texture] + "_texture"
 
 ## Finds outputs and target properties whose target matches no targetname in [param map_node] or its overlays.

@@ -174,6 +174,8 @@ class EntityData extends RefCounted:
 	var collision_shapes: Array[CollisionShape3D] = []
 	## [OccluderInstance3D] node generated during the entity assembly stage using the [member mesh] resource.
 	var occluder_instance: OccluderInstance3D = null
+	## Triangles of the faces textured with an occluder tool texture, which add to the occluder but draw nothing.
+	var occluder_faces: PackedVector3Array = []
 	## True global position of the entity's generated node that the mesh's vertices are offset by during the geometry generation stage.
 	var origin: Vector3 = Vector3.ZERO
 	## Hammer style I/O connections ({output, target, input, parameter, delay, times}).

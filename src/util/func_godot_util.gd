@@ -37,6 +37,9 @@ static func is_point_in_convex_hull(planes: Array[Plane], vertex: Vector3) -> bo
 
 ## Fallback texture if the one a face names cannot be found.
 const default_texture_path: String = "res://addons/func_godot/textures/default_texture.png"
+## Texture size in pixels for a material with no albedo texture and no image to measure, the TrenchDot editor's
+## default fallback size.
+const FALLBACK_TEXTURE_SIZE := 64
 ## Holds the default texture and the TrenchDot editor's built in dev/ colours, used when the project has no
 ## texture of that name.
 const builtin_texture_dir: String = "res://addons/func_godot/textures"
@@ -81,10 +84,35 @@ static func load_texture(texture_name: String, map_settings: FuncGodotMapSetting
 		return load(builtin)
 	return load(default_texture_path)
 
-## Filters faces textured with Skip during the geometry generation step of the build process.
+## Folders and names of tool textures that build no visual mesh besides the four the map settings name. The
+## TrenchDot editor keeps the same lists in game.rs and hides the same faces.
+const NODRAW_FOLDERS: PackedStringArray = ["special/", "tools/", "td/"]
+const NODRAW_NAMES: PackedStringArray = ["clip", "skip", "origin", "sky", "trigger", "nodraw", "hint", "hintskip", "caulk", "null", "areaportal", "playerclip", "occluder"]
+## Of those, the ones that do not collide either, like skip.
+const NONSOLID_TOOL_NAMES: PackedStringArray = ["skip", "origin", "hint", "hintskip", "null", "areaportal"]
+## Of those, the ones whose faces feed the entity's occluder instead.
+const OCCLUDER_TOOL_NAMES: PackedStringArray = ["occluder"]
+
+## True when faces with [param texture] build no visual mesh, by its folder or name.
+static func is_nodraw(texture: String) -> bool:
+	var lower := texture.to_lower()
+	for folder in NODRAW_FOLDERS:
+		if lower.begins_with(folder):
+			return true
+	return lower.get_file() in NODRAW_NAMES
+
+## The name of a nodraw tool texture without its folder, empty for any other texture.
+static func _nodraw_name(texture: String) -> String:
+	return texture.to_lower().get_file() if is_nodraw(texture) else ""
+
+## True for faces with an occluder tool texture.
+static func is_occluder(texture: String) -> bool:
+	return _nodraw_name(texture) in OCCLUDER_TOOL_NAMES
+
+## Filters faces textured with Skip, or a nodraw tool texture that does not collide, during the geometry generation step.
 static func is_skip(texture: String, map_settings: FuncGodotMapSettings) -> bool:
 	if map_settings:
-		return texture.to_lower() == map_settings.skip_texture
+		return texture.to_lower() == map_settings.skip_texture or _nodraw_name(texture) in NONSOLID_TOOL_NAMES
 	return false
 
 ## Filters faces textured with Clip during the geometry generation step of the build process.
@@ -113,6 +141,7 @@ static func filter_face(texture: String, map_settings: FuncGodotMapSettings) -> 
 			or texture == map_settings.clip_texture
 		 	or texture == map_settings.origin_texture
 			or texture == map_settings.sky_texture
+			or is_nodraw(texture)
 			):
 			return true
 	return false
@@ -227,7 +256,7 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 						if texture:
 							texture_sizes[texture_name] = texture.get_size()
 					if not texture_sizes.has(texture_name):
-						texture_sizes[texture_name] = Vector2.ONE * map_settings.inverse_scale_factor
+						texture_sizes[texture_name] = Vector2.ONE * FALLBACK_TEXTURE_SIZE
 					var world_size := material_texture_size(material)
 					if world_size != Vector2.ZERO:
 						texture_sizes[texture_name] = world_size

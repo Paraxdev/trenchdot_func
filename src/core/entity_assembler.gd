@@ -83,29 +83,7 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 			mesh_instance.set_meta(TrenchDotLightmap.BAKED_META, true)
 		node.add_child(mesh_instance)
 		data.mesh_instance = mesh_instance
-		
-		# Occluder generation
-		if definition.build_occlusion and data.mesh:
-			var verts: PackedVector3Array = []
-			var indices: PackedInt32Array = []
-			var index: int = 0
-			for surf_idx in range(data.mesh.get_surface_count()):
-				var vert_count: int = verts.size()
-				var surf_array: Array = data.mesh.surface_get_arrays(surf_idx)
-				verts.append_array(surf_array[Mesh.ARRAY_VERTEX])
-				indices.resize(indices.size() + surf_array[Mesh.ARRAY_INDEX].size())
-				for new_index in surf_array[Mesh.ARRAY_INDEX]:
-					indices[index] = (new_index + vert_count)
-					index += 1
-			
-			var occluder := ArrayOccluder3D.new()
-			occluder.set_arrays(verts, indices)
-			var occluder_instance := OccluderInstance3D.new()
-			occluder_instance.name = node_name + "_occluder_instance"
-			occluder_instance.occluder = occluder
-			node.add_child(occluder_instance)
-			data.occluder_instance = occluder_instance
-		
+
 		# NOTE: Currently occuring in EntityAssembler until the appropriate method in GeometryGenerator is resolved
 		# For now, smooth entire mesh, then unwrap for lightmap if needed
 		if not (build_flags & FuncGodotMap.BuildFlags.DISABLE_SMOOTHING) and data.is_smooth_shaded(map_settings.entity_smoothing_property):
@@ -116,6 +94,31 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 					Transform3D.IDENTITY,
 					map_settings.uv_unwrap_texel_size * map_settings.scale_factor
 				)
+
+	# Occluder generation, from the visual mesh and the faces textured with an occluder tool texture.
+	if definition.build_occlusion and (data.mesh or not data.occluder_faces.is_empty()):
+		var verts: PackedVector3Array = []
+		var indices: PackedInt32Array = []
+		var index: int = 0
+		for surf_idx in range(data.mesh.get_surface_count() if data.mesh else 0):
+			var vert_count: int = verts.size()
+			var surf_array: Array = data.mesh.surface_get_arrays(surf_idx)
+			verts.append_array(surf_array[Mesh.ARRAY_VERTEX])
+			indices.resize(indices.size() + surf_array[Mesh.ARRAY_INDEX].size())
+			for new_index in surf_array[Mesh.ARRAY_INDEX]:
+				indices[index] = (new_index + vert_count)
+				index += 1
+		for i in data.occluder_faces.size():
+			indices.append(verts.size())
+			verts.append(data.occluder_faces[i])
+
+		var occluder := ArrayOccluder3D.new()
+		occluder.set_arrays(verts, indices)
+		var occluder_instance := OccluderInstance3D.new()
+		occluder_instance.name = node_name + "_occluder_instance"
+		occluder_instance.occluder = occluder
+		node.add_child(occluder_instance)
+		data.occluder_instance = occluder_instance
 
 	# Collision generation
 	if data.shapes.size() and node is CollisionObject3D:

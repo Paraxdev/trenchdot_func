@@ -47,6 +47,10 @@ func is_origin(face: _FaceData) -> bool:
 func is_sky(face: _FaceData) -> bool:
 	return FuncGodotUtil.is_sky(face.texture, map_settings)
 
+## Faces that collide but build no visual mesh: clip, sky, the nodraw tool textures and faces hidden by face culling.
+func is_hidden(face: _FaceData) -> bool:
+	return is_clip(face) or is_sky(face) or face.render_hidden or FuncGodotUtil.is_nodraw(face.texture)
+
 #endregion
 
 #region BRUSHES
@@ -462,10 +466,10 @@ func generate_entity_surfaces(entity_index: int) -> void:
 			#endregion
 			
 			if face.is_displacement():
-				var tx_size: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * map_settings.inverse_scale_factor)
+				var tx_size: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * FuncGodotUtil.FALLBACK_TEXTURE_SIZE)
 				if build_concave or entity.is_collision_convex():
 					concave_vertices.append_array(TrenchDotDisplacement.triangles(face, op_entity_ogl_xf))
-				if is_clip(face) or is_sky(face) or face.render_hidden:
+				if is_hidden(face):
 					continue
 				index_offset += TrenchDotDisplacement.append_surface(arrays, face, op_entity_ogl_xf, tx_size, index_offset, use_colors)
 				continue
@@ -482,8 +486,10 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				
 				concave_vertices.append_array(tris)
 				
-			# Do not generate visuals for clip and sky textures
-			if is_clip(face) or is_sky(face) or face.render_hidden:
+			if is_hidden(face):
+				if FuncGodotUtil.is_occluder(face.texture):
+					for i in face.indices:
+						entity.occluder_faces.append(op_entity_ogl_xf.call(face.vertices[i]))
 				continue
 			
 			# Handle metadata for this face
@@ -520,7 +526,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				var v: Vector3 = face.vertices[i]
 				arrays[ArrayMesh.ARRAY_VERTEX].append(op_entity_ogl_xf.call(v))
 				arrays[ArrayMesh.ARRAY_NORMAL].append(FuncGodotUtil.id_to_opengl(face.normals[i]))
-				var tx_sz: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * map_settings.inverse_scale_factor)
+				var tx_sz: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * FuncGodotUtil.FALLBACK_TEXTURE_SIZE)
 				arrays[ArrayMesh.ARRAY_TEX_UV].append(FuncGodotUtil.get_face_vertex_uv(v, face, tx_sz))
 				if entity.baked:
 					arrays[ArrayMesh.ARRAY_TEX_UV2].append(TrenchDotLightmap.uv2(face.lightmap_rows, v))
@@ -579,6 +585,9 @@ func generate_entity_surfaces(entity_index: int) -> void:
 			entity.pending_concave_faces = concave_vertices
 		for b in entity.brushes:
 			if b.planes.is_empty() or b.origin or b.has_disp:
+				continue
+			# A brush of only skip like faces (skip, hint, ...) builds nothing, the way it does with concave collision.
+			if b.faces.all(is_skip):
 				continue
 
 			var points := PackedVector3Array(Array(Geometry3D.compute_convex_mesh_points(b.planes)).map(op_entity_ogl_xf))
