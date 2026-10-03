@@ -11,6 +11,8 @@ class_name TrenchDotScatter extends Node3D
 @export var chunk_size := 0.0
 
 const BUFFER_META := &"td_transforms"
+## Map units per chunk when a scatter set leaves chunk_size out, DEFAULT_CHUNK_SIZE in crates/td_doc/src/scatter.rs.
+const DEFAULT_CHUNK_SIZE := 2048.0
 
 func _ready() -> void:
 	restore_buffers()
@@ -186,14 +188,16 @@ static func _chunk_instance(mi: MeshInstance3D, rel: Transform3D, transforms: Ar
 static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapSettings) -> TrenchDotScatter:
 	var node := TrenchDotScatter.new()
 	node.kind = str(data.get("kind", "props"))
-	node.collision = str(data.get("collision", "none" if node.kind == "foliage" else "convex"))
+	# Missing keys take the defaults Scatter::new in crates/td_doc/src/scatter.rs gives this kind.
+	var foliage := node.kind == "foliage"
+	node.collision = str(data.get("collision", "none" if foliage else "convex"))
 	var scale := settings.scale_factor
 	var items: Array = data.get("items", [])
 	var instances: Array = data.get("instances", [])
 	node.instance_count = instances.size()
-	var shadows := bool(data.get("cast_shadows", true))
-	var range_end := float(data.get("visibility_range", 0.0)) * scale
-	node.chunk_size = float(data.get("chunk_size", 0.0))
+	var shadows := bool(data.get("cast_shadows", not foliage))
+	var range_end := float(data.get("visibility_range", 2400.0 if foliage else 0.0)) * scale
+	node.chunk_size = float(data.get("chunk_size", DEFAULT_CHUNK_SIZE))
 	var props_as_multimesh := bool(data.get("static_props_multimesh", false))
 	# Per palette entry, the instance transforms grouped by chunk cell, so each cell becomes a MultiMesh with its
 	# own bounds that Godot frustum culls on its own instead of one set spanning the whole map.

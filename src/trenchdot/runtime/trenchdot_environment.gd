@@ -5,19 +5,15 @@ class_name TrenchDotEnvironment extends RefCounted
 ## sky_top_color, sky_horizon_color, sky_ground_color, fog_color and fog_density (per meter). For night maps
 ## ambient_energy and sky_energy scale the ambient light and the sky, and glow_intensity above 0 turns on glow so
 ## emissive materials and lamps bloom, while ssr 1 turns on screen space reflections for wet streets and glossy
-## floors. Colors are "r g b" in 0..255 or 0..1. sky_panorama, a res:// image, replaces the procedural sky with a
-## panorama, as texture conversion writes for a Source skybox. The worldspawn key "environment" set to sun_only builds
+## floors. Colors are "r g b" as [method TrenchDotIO.to_color] reads them. sky_panorama, a res:// image, replaces
+## the procedural sky with a panorama, as texture conversion writes for a Source skybox. The worldspawn key "environment" set to sun_only builds
 ## only the sun, 0 or none builds nothing. A WorldEnvironment or DirectionalLight3D the scene has already, outside the
 ## map, is left to do its job and none is added, so of several maps in one scene the first one built lights it.
 
-const KEYS := ["sun_angles", "sky_top_color", "sky_panorama", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity", "ssr"]
+const KEYS := ["sun_angles", "sun_color", "sun_energy", "sun_bake_mode", "ambient_color", "sky_top_color", "sky_panorama", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity", "ssr"]
 
 static func parse_color(text: String, fallback: Color) -> Color:
-	var parts := text.split_floats(" ", false)
-	if parts.size() < 3:
-		return fallback
-	var scale := 255.0 if parts[0] > 1.0 or parts[1] > 1.0 or parts[2] > 1.0 else 1.0
-	return Color(parts[0] / scale, parts[1] / scale, parts[2] / scale)
+	return TrenchDotIO.to_color(text, fallback)
 
 ## The WorldEnvironment of the scene [param map_node] is built into, leaving out the map's own nodes.
 static func scene_environment(map_node: Node) -> WorldEnvironment:
@@ -111,7 +107,7 @@ static func _world_environment(properties: Dictionary) -> WorldEnvironment:
 		env.glow_bloom = 0.05
 		env.glow_hdr_threshold = 0.9
 		env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
-	if str(properties.get("ssr", "0")) == "1":
+	if TrenchDotIO.to_bool(properties.get("ssr", false)):
 		env.ssr_enabled = true
 		env.ssr_max_steps = 96
 	var density := str(properties.get("fog_density", "0")).to_float()

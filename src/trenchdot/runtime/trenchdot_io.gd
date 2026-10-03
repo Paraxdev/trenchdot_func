@@ -466,15 +466,20 @@ static func to_vector3(value: Variant) -> Vector3:
 	var p := str(value).split_floats(" ", false)
 	return Vector3(p[0], p[1], p[2]) if p.size() >= 3 else Vector3.ZERO
 
-## "r g b" in 0..255 or 0..1.
-static func to_color(value: Variant) -> Color:
+## "r g b" in 0..255, or 0..1 when every part is at most 1 and one has a decimal point, so "1 1 1" is near black
+## and "1.0 0.8 0.5" is warm white. widgets::parse_color in crates/td_editor/src/widgets.rs reads them the same way.
+static func to_color(value: Variant, fallback := Color.WHITE) -> Color:
 	if value is Color:
 		return value
-	var p := str(value).split_floats(" ", false)
+	var text := str(value)
+	var p := text.split_floats(" ", false)
 	if p.size() < 3:
-		return Color.WHITE
-	var scale := 255.0 if p[0] > 1.0 or p[1] > 1.0 or p[2] > 1.0 else 1.0
-	return Color(p[0] / scale, p[1] / scale, p[2] / scale)
+		return fallback
+	var unit := text.contains(".")
+	for c in p:
+		unit = unit and c <= 1.0
+	var scale := 1.0 if unit else 255.0
+	return Color(clampf(p[0] / scale, 0.0, 1.0), clampf(p[1] / scale, 0.0, 1.0), clampf(p[2] / scale, 0.0, 1.0))
 
 ## Map units ("x y z") to meters in Godot, using the map's scale.
 static func map_vector(value: Variant, units_per_meter: float = 32.0) -> Vector3:

@@ -219,7 +219,7 @@ static func bake_mode(properties: Dictionary, key: String) -> Light3D.BakeMode:
 			return Light3D.BAKE_DYNAMIC
 		"realtime", "disabled":
 			return Light3D.BAKE_DISABLED
-	var switchable := key == "bake_mode" and (str(properties.get("targetname", "")) != "" or str(properties.get("start_on", "1")) == "0")
+	var switchable := key == "bake_mode" and (str(properties.get("targetname", "")) != "" or not TrenchDotIO.to_bool(properties.get("start_on", true)))
 	return Light3D.BAKE_DISABLED if switchable else Light3D.BAKE_STATIC
 
 static func _bytes(v: Variant) -> PackedByteArray:

@@ -30,6 +30,11 @@ static func vec2(a: Variant, fallback := Vector2.ONE) -> Vector2:
 		return Vector2(float(a[0]), float(a[1]))
 	return fallback
 
+## The texture scale of a face's uv, where a zero part counts as 1 like FaceUv::texel in the editor.
+static func uv_scale_of(uv: Dictionary) -> Vector2:
+	var s := vec2(uv.get("scale"), Vector2.ONE)
+	return Vector2(s.x if absf(s.x) >= 1e-9 else 1.0, s.y if absf(s.y) >= 1e-9 else 1.0)
+
 ## TrenchDot angles are node rotation degrees (YXZ). FuncGodot applies (-a0, a1 + 180, -a2) to Quake angles.
 static func angles_to_quake(angles: Vector3) -> String:
 	return "%s %s %s" % [-angles.x, angles.y - 180.0, -angles.z]
@@ -360,7 +365,7 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 		var u_axis := vec3(uv.get("u_axis"), Vector3.RIGHT)
 		var v_axis := vec3(uv.get("v_axis"), Vector3.BACK)
 		var offset := vec2(uv.get("offset"), Vector2.ZERO)
-		var uv_scale := vec2(uv.get("scale"), Vector2.ONE)
+		var uv_scale := uv_scale_of(uv)
 		if world_projected.has(str(f.get("material", ""))):
 			var axes := paraxial_axes(normal.normalized())
 			u_axis = axes[0]
@@ -411,7 +416,7 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 					face.disp_alphas.append(float(a))
 				brush.has_disp = true
 
-		if face.texture != origin_texture:
+		if face.texture.to_lower() != origin_texture:
 			brush.origin = false
 		brush.planes.append(plane)
 		brush.faces.append(face)

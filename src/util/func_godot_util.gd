@@ -291,6 +291,10 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 static func get_valve_uv(vertex: Vector3, u_axis: Vector3, v_axis: Vector3, uv_basis := Transform2D.IDENTITY, texture_size := Vector2.ONE) -> Vector2:
 	var uv := Vector2(u_axis.dot(vertex), v_axis.dot(vertex))
 	var scale := Vector2(uv_basis.x.x, uv_basis.y.y)
+	if absf(scale.x) < 1e-9:
+		scale.x = 1.0
+	if absf(scale.y) < 1e-9:
+		scale.y = 1.0
 	uv += (uv_basis.origin * scale)
 	uv /= scale;
 	uv.x /= texture_size.x

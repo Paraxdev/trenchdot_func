@@ -126,7 +126,7 @@ func post_process(parse_data: _ParseData, map_settings: FuncGodotMapSettings) ->
 					TYPE_FLOAT:
 						properties[property] = prop_string.to_float()
 					TYPE_BOOL:
-						properties[property] = bool(prop_string.to_int())
+						properties[property] = TrenchDotIO.to_bool(prop_string) or prop_string.to_int() != 0
 					TYPE_VECTOR3:
 						var prop_comps: PackedFloat64Array = prop_string.split_floats(" ")
 						if prop_comps.size() > 2:
@@ -145,12 +145,8 @@ func post_process(parse_data: _ParseData, map_settings: FuncGodotMapSettings) ->
 						properties[property] = prop_vec
 					TYPE_COLOR:
 						var prop_color: Color = prop_default
-						var prop_comps: PackedStringArray = prop_string.split(" ")
-						if prop_comps.size() > 2:
-							prop_color.r8 = prop_comps[0].to_int()
-							prop_color.g8 = prop_comps[1].to_int()
-							prop_color.b8 = prop_comps[2].to_int()
-							prop_color.a = 1.0
+						if prop_string.split_floats(" ", false).size() > 2:
+							prop_color = TrenchDotIO.to_color(prop_string)
 						else:
 							push_error("Invalid Color format for \'" + property + "\' in entity \'" + def.classname + "\': " + prop_string)
 						properties[property] = prop_color

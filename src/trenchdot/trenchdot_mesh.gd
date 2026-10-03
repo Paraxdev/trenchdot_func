@@ -205,7 +205,7 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 		var u_axis := TrenchDotParser.vec3(uv.get("u_axis"), Vector3.RIGHT)
 		var v_axis := TrenchDotParser.vec3(uv.get("v_axis"), Vector3.BACK)
 		var offset := TrenchDotParser.vec2(uv.get("offset"), Vector2.ZERO)
-		var uv_scale := TrenchDotParser.vec2(uv.get("scale"), Vector2.ONE)
+		var uv_scale := TrenchDotParser.uv_scale_of(uv)
 		if xform != Transform3D.IDENTITY:
 			var inv_t := xform.basis.inverse().transposed()
 			var t := xform.origin

@@ -10,8 +10,15 @@ class_name TrenchDotDecal extends Decal
 
 const DEFAULT_SIZE := Vector3(64, 32, 64)
 
+## Size in map units from the last build, converted again once the node has a map above it.
+var _map_size := Vector3.ZERO
+
+func _notification(what: int) -> void:
+	# Properties are applied before the entity has a parent, so the map's scale is only known here.
+	if what == NOTIFICATION_PARENTED and _map_size != Vector3.ZERO:
+		size = _map_size / TrenchDotIO.units_per_meter(self)
+
 func _func_godot_apply_properties(props: Dictionary) -> void:
-	var scale_factor := 1.0 / float(ProjectSettings.get_setting("func_godot/default_inverse_scale_factor", 32.0))
 	var tex = props.get("texture", "")
 	if tex is String and tex != "" and ResourceLoader.exists(tex):
 		texture_albedo = load(tex)
@@ -41,7 +48,8 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 		var footprint := FuncGodotUtil.material_texture_size(mat)
 		if s == DEFAULT_SIZE and footprint != Vector2.ZERO:
 			s = Vector3(footprint.x, s.y, footprint.y)
-	size = s * scale_factor
+	_map_size = s
+	size = s / TrenchDotIO.units_per_meter(self)
 
 ## The material named like a map face's, from the default map settings, or a res:// path.
 static func _material(name: String) -> BaseMaterial3D:
