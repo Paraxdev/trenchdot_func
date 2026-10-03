@@ -2598,6 +2598,13 @@
           "parameter": "amount",
           "type": "float"
         }
+      ],
+      "gizmos": [
+        {
+          "type": "box",
+          "property": "size",
+          "half": true
+        }
       ]
     },
     {
