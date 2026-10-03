@@ -26,7 +26,9 @@ class_properties = Dictionary[String, Variant]({
 "bounce only": "bounce",
 "real time": "realtime"
 },
-"light_size": 0.0
+"light_size": 0.0,
+"omni_attenuation": 1.0,
+"light_indirect_energy": 1.0
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -35,10 +37,12 @@ class_property_descriptions = Dictionary[String, Variant]({
 "omni_range": "Range in meters",
 "start_on": "Starts switched on",
 "shadows": "Casts shadows, costs more to render",
-"fixture": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off",
+"fixture": "Targetname of the lamp geometry (* for a prefix, @group for a node group) that follows the light: shown while on, hidden or dark while off",
 "fixture_off": ["What a fixture does while the light is off", "hide"],
 "bake_mode": ["How Bake Lighting treats the light. Auto bakes it unless a targetname or start_on 0 lets I/O switch it, bounce bakes only its bounced light and keeps the direct light real time", "auto"],
-"light_size": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake"
+"light_size": "Radius in meters of the lamp for soft shadows. In the bake 0 uses its shadow softness",
+"omni_attenuation": "Falloff curve over the range, higher fades faster near the light",
+"light_indirect_energy": "Strength of the bounced light"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(1, 0.9019608, 0.3019608, 1),

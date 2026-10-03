@@ -241,9 +241,22 @@ func _mark_subtree(id: int) -> void:
 	for child in _nodes[id].get("children", []):
 		_mark_subtree(int(child.get("id", 0)))
 
+## Leaves the baked lighting of [param node] and its children out of later full builds, the way the editor marks
+## nodes changed since the bake as stale.
+func _stale(node: Dictionary) -> void:
+	var lightmap = model.get("lightmap")
+	if not lightmap is Dictionary or node.is_empty():
+		return
+	var stale: Array = lightmap.get_or_add("stale", [])
+	if not node.get("id") in stale:
+		stale.append(node.get("id"))
+	for child in node.get("children", []):
+		_stale(child)
+
 ## Queues what a change of node [param id] rebuilds. [param old] is the node before the change, empty for new nodes.
 func _mark(id: int, old: Dictionary) -> void:
 	var node: Dictionary = _nodes.get(id, {})
+	_stale(node if not node.is_empty() else old)
 	match str(node.get("type", "")):
 		"layer":
 			if not old.is_empty() and bool(old.get("omit_from_export", false)) != bool(node.get("omit_from_export", false)):
@@ -277,6 +290,7 @@ func _translate(ids: Array, offset: Vector3) -> void:
 			continue
 		var before := _bounds(node)
 		_offset_node(node, offset)
+		_stale(node)
 		match str(node.get("type", "")):
 			"entity", "scatter", "terrain":
 				moved[id] = true

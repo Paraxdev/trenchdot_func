@@ -16,6 +16,9 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	if props.has("light_color"):
 		light_color = TrenchDotIO.to_color(props.get("light_color"))
 	omni_range = float(props.get("omni_range", omni_range))
+	omni_attenuation = float(props.get("omni_attenuation", omni_attenuation))
+	light_size = maxf(float(props.get("light_size", light_size)), 0.0)
+	light_indirect_energy = maxf(float(props.get("light_indirect_energy", light_indirect_energy)), 0.0)
 	shadow_enabled = TrenchDotIO.to_bool(props.get("shadows", shadow_enabled))
 	start_on = TrenchDotIO.to_bool(props.get("start_on", start_on))
 	fixture = str(props.get("fixture", fixture))

@@ -16,7 +16,7 @@ const FORMAT_VERSION := 1
 ## Written relative to the project, the TrenchDot editor looks for it in the project root.
 @export_file("*.json") var output_path: String = "res://trenchdot_game.json"
 ## Texture size assumed by the editor when an image cannot be read.
-@export var fallback_texture_size: int = 64
+@export var fallback_texture_size: int = FuncGodotUtil.FALLBACK_TEXTURE_SIZE
 ## Folders searched for C# entity classes ([TrenchDotEntity]) and C# node classes named by FGD entries.
 @export var csharp_source_dirs: PackedStringArray = ["res://"]
 
@@ -199,6 +199,13 @@ func build_config() -> Dictionary:
 			"node_class": def.node_class,
 			"group": classname.get_slice("_", 0),
 		}
+		# The groups the entity assembler adds the node to, so the editor can resolve @group targets.
+		var groups: Array = []
+		for g in (Array(map_settings.entity_node_groups) if map_settings else []) + Array(def.node_groups):
+			if g != "" and not g in groups:
+				groups.append(g)
+		if not groups.is_empty():
+			entry["node_groups"] = groups
 		var size: Variant = meta.get("size", null)
 		if size is AABB:
 			# FuncGodot stores FGD sizes as AABB(min, max) in id axes.
