@@ -15,6 +15,9 @@ const FORMAT_NAME := "trenchdot-map"
 ## Newest map version this importer understands, the same as FORMAT_VERSION in crates/td_doc/src/format.rs.
 const FORMAT_VERSION := 1
 const MAX_INSTANCE_DEPTH := 8
+## Values that prefab instances may add to one build in all, counted per instance from what its prefab holds, see
+## [method _size]. Instances of instances could otherwise multiply a small map past anything a build can take.
+const MAX_INSTANCED := 1 << 21
 
 ## Godot space (map units, Y-up) to FuncGodot's id space.
 static func to_id(v: Vector3) -> Vector3:
@@ -60,6 +63,10 @@ class Context:
 	var worldspawn: _EntityData
 	var next_group_id := 1
 	var instance_depth := 0
+	## Prefabs read by this build, by path: the parsed map and its [method _size], or null when it cannot be read.
+	var prefabs: Dictionary = {}
+	## What instances have added so far, see [constant MAX_INSTANCED].
+	var instanced := 0
 	## Id namespace of the instance occurrence currently being parsed, 0 at the top level. Every [method _parse_instance]
 	## call gets its own value from [member next_instance_ns], so two copies of the same prefab never share ids, however
 	## deep they are nested.
@@ -480,8 +487,17 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 	var path := _resolve_instance_path(ctx, str(node.get("path", "")))
 	if path == "":
 		return
-	var json = TrenchDotTdmFile.load_map(path)
-	if json == null or not _readable(json, path):
+	if not ctx.prefabs.has(path):
+		var loaded = TrenchDotTdmFile.load_map(path)
+		ctx.prefabs[path] = [loaded, _size(loaded)] if loaded != null and _readable(loaded, path) else null
+	var prefab = ctx.prefabs[path]
+	if prefab == null:
+		return
+	var json: Dictionary = prefab[0]
+	if ctx.instanced <= MAX_INSTANCED and ctx.instanced + prefab[1] > MAX_INSTANCED:
+		push_error("[TDM] %s places more prefab content than one build takes, leaving out %s and the instances after it" % [ctx.map_path, path])
+	ctx.instanced += prefab[1]
+	if ctx.instanced > MAX_INSTANCED:
 		return
 
 	var saved_xform := ctx.xform
@@ -511,3 +527,24 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 	ctx.xform = saved_xform
 	ctx.name_prefix = saved_prefix
 	ctx.map_path = saved_path
+
+## How many values the exported layers of [param json] hold, packed array items and every 8 characters of text
+## included. An instance in it only counts as itself, the prefab it names is counted when it is placed.
+static func _size(json: Variant) -> int:
+	var total := 0
+	var stack: Array = []
+	for layer in json.get("layers", []):
+		if _is_layer(layer) and not bool(layer.get("omit_from_export", false)):
+			stack.append(layer)
+	while not stack.is_empty():
+		var value: Variant = stack.pop_back()
+		total += 1
+		if value is Dictionary:
+			stack.append_array(value.values())
+		elif value is Array:
+			stack.append_array(value)
+		elif value is String:
+			total += value.length() / 8
+		elif typeof(value) > TYPE_ARRAY and typeof(value) < TYPE_MAX:
+			total += value.size()
+	return total
