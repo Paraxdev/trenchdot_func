@@ -75,6 +75,15 @@ static func _probes(raw: Dictionary) -> Dictionary:
 	for i in tetrahedra:
 		if i < 0 or i >= n:
 			return {}
+	# Note: Godot walks the tree without bounds checks and keeps the children as int32. A child is a later node, a leaf
+	# -1 - tetrahedron, or INT32_MIN for an empty leaf, anything else hangs Godot or reads past the arrays.
+	var tets := tetrahedra.size() / 4
+	for k in children.size():
+		var c := children[k]
+		if c >= 0 and (c <= k / 2 or c >= nodes):
+			return {}
+		if c < -tets and c != -2147483648:
+			return {}
 	return { "points": points, "sh": sh, "tetrahedra": tetrahedra, "bsp_planes": planes, "bsp_children": children }
 
 ## The dictionary [method LightmapGIData._set_probe_data] takes, for positions in meters [param scale] per map unit.
