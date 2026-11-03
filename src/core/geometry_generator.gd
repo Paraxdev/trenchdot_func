@@ -217,7 +217,12 @@ func determine_entity_origins(entity_index: int) -> void:
 
 func wind_entity_faces(entity_index: int) -> void:
 	var entity: _EntityData = entity_data[entity_index]
+	# TrenchDot mesh faces draw and collide from their own triangles, only interior face culling reads their corners
+	# in order.
+	var cull_interior = entity.properties.get(map_settings.cull_interior_faces_property, false)
 	for brush in entity.brushes:
+		if brush.is_mesh and not cull_interior:
+			continue
 		for face in brush.faces:
 			# Faces should already be wound from the new generation process, but this should be tested further first.
 			var unwound := face.vertices.duplicate() if not face.vertex_colors.is_empty() else PackedVector3Array()
