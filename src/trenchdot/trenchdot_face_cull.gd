@@ -16,10 +16,18 @@ const MOVING_CLASSES := ["Area3D", "AnimatableBody3D", "RigidBody3D", "Character
 const COPLANAR_WORK := 1 << 23
 ## Most grid cells a face is bucketed in by the coplanar pass, see [method _touching].
 const MAX_FACE_CELLS := 64
+## Planes, triangles and segments the interior pass of one build may test faces against. Past it the faces still to
+## be tested are kept. Only a map made to stall a build gets there.
+const INTERIOR_WORK := 1 << 24
+## How many cells of a closed mesh's ray grid a triangle is bucketed in on average at most, see [method Solid.contains].
+const RAY_GRID_FILL := 16
 
-## What is left of [constant COPLANAR_WORK] to a build.
+## What is left of [constant COPLANAR_WORK] or [constant INTERIOR_WORK] to a build.
 class Work:
-	var left := COPLANAR_WORK
+	var left: int
+
+	func _init(amount := COPLANAR_WORK) -> void:
+		left = amount
 
 class Entry:
 	var face: FuncGodotData.FaceData
@@ -42,31 +50,158 @@ class Solid:
 	var normals: PackedVector3Array
 	var dists: PackedFloat32Array
 	var tris: PackedVector3Array
+	## [member bounds] grown by [constant COPLANAR_DIST].
+	var reach: AABB
+	# Every ray leaves the same way, so a ray only meets the triangles whose outline, seen along it, holds its start.
+	# They are bucketed in a square grid in that view the first time the mesh is tested.
+	var _dir: Vector3
+	var _u: Vector3
+	var _v: Vector3
+	var _side := 0
+	var _lo: Vector2
+	var _scale: Vector2
+	var _starts := PackedInt32Array()
+	var _cells := PackedInt32Array()
+	var _seen := PackedInt32Array()
+	var _stamp := 0
 
-	func contains(p: Vector3) -> bool:
-		if not bounds.grow(COPLANAR_DIST).has_point(p):
+	func contains(p: Vector3, work: Work) -> bool:
+		if not reach.has_point(p):
 			return false
 		if not is_mesh:
+			work.left -= normals.size()
 			for i in normals.size():
 				if normals[i].dot(p) - dists[i] > 0.0:
 					return false
 			return true
+		if _side == 0:
+			_bucket(work)
 		# A ray leaving a point inside a closed surface crosses it an odd number of times. The direction is
 		# irregular so it rarely grazes an edge, and hits at the same distance (a shared edge) count once.
-		var dir := Vector3(0.5773, 0.5574, 0.5964).normalized()
+		var cell := _cell_of(Vector2(p.dot(_u), p.dot(_v))) if _side > 1 else 0
+		var from := _starts[cell]
+		var to := _starts[cell + 1]
+		work.left -= to - from
 		var hits := PackedFloat32Array()
-		var i := 0
-		while i < tris.size():
-			var at = Geometry3D.ray_intersects_triangle(p, dir, tris[i], tris[i + 1], tris[i + 2])
+		for k in range(from, to):
+			var i := _cells[k] * 3
+			var at = Geometry3D.ray_intersects_triangle(p, _dir, tris[i], tris[i + 1], tris[i + 2])
 			if at != null:
 				hits.append(p.distance_to(at))
-			i += 3
 		hits.sort()
 		var crossings := 0
 		for k in hits.size():
 			if k == 0 or absf(hits[k] - hits[k - 1]) > 1e-5:
 				crossings += 1
 		return crossings % 2 == 1
+
+	## The triangles that may touch [param box], each once.
+	func near(box: AABB, work: Work) -> PackedInt32Array:
+		if _side == 0:
+			_bucket(work)
+		var count := tris.size() / 3
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for k in 8:
+			var c := box.get_endpoint(k)
+			var q := Vector2(c.dot(_u), c.dot(_v))
+			lo = lo.min(q)
+			hi = hi.max(q)
+		var from := _cell_of(lo)
+		var to := _cell_of(hi)
+		if _span(from, to) > count:
+			work.left -= count
+			return PackedInt32Array(range(count))
+		var x0 := from % _side
+		var x1 := to % _side
+		_stamp += 1
+		var out := PackedInt32Array()
+		for y in range(from / _side, to / _side + 1):
+			var row_from := _starts[y * _side + x0]
+			var row_to := _starts[y * _side + x1 + 1]
+			work.left -= row_to - row_from
+			for k in range(row_from, row_to):
+				var t := _cells[k]
+				if _seen[t] != _stamp:
+					_seen[t] = _stamp
+					out.append(t)
+		return out
+
+	func _cell_of(q: Vector2) -> int:
+		return _axis_cell((q.y - _lo.y) * _scale.y) * _side + _axis_cell((q.x - _lo.x) * _scale.x)
+
+	func _axis_cell(f: float) -> int:
+		if f >= _side:
+			return _side - 1
+		if f >= 0.0:
+			return int(f)
+		return 0
+
+	func _bucket(work: Work) -> void:
+		_dir = Vector3(0.5773, 0.5574, 0.5964).normalized()
+		_u = _dir.cross(Vector3.UP).normalized()
+		_v = _dir.cross(_u)
+		var count := tris.size() / 3
+		# Godot tests rays in single precision, a ray may meet a triangle a little outside its outline.
+		var extent := bounds.get_longest_axis_size() + maxf(bounds.position.abs().max(bounds.end.abs()).length(), 1.0)
+		var margin := Vector2.ONE * (COPLANAR_DIST + extent * 1e-4)
+		var boxes := PackedVector2Array()
+		boxes.resize(count * 2)
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for t in count:
+			var a := Vector2(INF, INF)
+			var b := Vector2(-INF, -INF)
+			for k in 3:
+				var q := Vector2(tris[t * 3 + k].dot(_u), tris[t * 3 + k].dot(_v))
+				a = a.min(q)
+				b = b.max(q)
+			boxes[t * 2] = a - margin
+			boxes[t * 2 + 1] = b + margin
+			lo = lo.min(boxes[t * 2])
+			hi = hi.max(boxes[t * 2 + 1])
+		_lo = lo
+		var ranges := PackedInt32Array()
+		ranges.resize(count * 2)
+		# A few triangles are quicker to test than to look up. Long thin ones span many cells, so the grid gets
+		# coarser until they no longer fill it too deep.
+		_side = maxi(int(sqrt(count)), 1) if count >= 16 else 1
+		while true:
+			_scale = Vector2(_side / (hi.x - lo.x) if hi.x > lo.x else 0.0, _side / (hi.y - lo.y) if hi.y > lo.y else 0.0)
+			var filled := 0
+			for t in count:
+				ranges[t * 2] = _cell_of(boxes[t * 2])
+				ranges[t * 2 + 1] = _cell_of(boxes[t * 2 + 1])
+				filled += _span(ranges[t * 2], ranges[t * 2 + 1])
+			work.left -= count
+			if filled <= RAY_GRID_FILL * count or _side == 1:
+				break
+			_side = maxi(_side / 2, 1)
+		_starts.resize(_side * _side + 1)
+		for t in count:
+			var from := ranges[t * 2]
+			var to := ranges[t * 2 + 1]
+			for y in range(from / _side, to / _side + 1):
+				for x in range(from % _side, to % _side + 1):
+					_starts[y * _side + x + 1] += 1
+		for cell in _side * _side:
+			_starts[cell + 1] += _starts[cell]
+		var fill := _starts.duplicate()
+		_cells.resize(_starts[_side * _side])
+		work.left -= _cells.size()
+		for t in count:
+			var from := ranges[t * 2]
+			var to := ranges[t * 2 + 1]
+			for y in range(from / _side, to / _side + 1):
+				for x in range(from % _side, to % _side + 1):
+					_cells[fill[y * _side + x]] = t
+					fill[y * _side + x] += 1
+		_seen.resize(count)
+		_seen.fill(0)
+
+	## Cells from [param from] to [param to] in the grid, two corners of a box.
+	func _span(from: int, to: int) -> int:
+		return (to % _side - from % _side + 1) * (to / _side - from / _side + 1)
 
 ## Segment a-b passing through the inside of triangle t0-t1-t2. Touching an edge or ending on the plane does not
 ## count. Mirrors segment_hits_triangle in crates/td_editor/src/face_cull.rs.
@@ -89,36 +224,39 @@ static func _segment_hits_triangle(a: Vector3, b: Vector3, t0: Vector3, t1: Vect
 
 ## Whether [param solid]'s own surface triangles cut through [param entry]'s polygon anywhere, meaning part of
 ## it lies outside a concave mesh even though every sampled corner tested inside. Mirrors crosses_surface. A mesh
-## face keeps the triangles it was built with, a brush face is clipped against [param budget].
-static func _crosses_surface(entry: Entry, solid: Solid, budget: TrenchDotMesh.ClipBudget) -> bool:
+## face keeps the triangles it was built with, a brush face is clipped against [param budget]. Once [param work]
+## runs out it answers true, which keeps the face.
+static func _crosses_surface(entry: Entry, solid: Solid, budget: TrenchDotMesh.ClipBudget, work: Work) -> bool:
 	var poly := entry.points
 	var face_tris := entry.face.disp_indices if entry.brush.is_mesh else TrenchDotMesh.triangulate(poly, entry.normal, budget)
 	var reach := entry.bounds.grow(COPLANAR_DIST)
 	var tris := solid.tris
-	var i := 0
-	while i < tris.size():
+	for t in solid.near(reach, work):
+		if work.left <= 0:
+			return true
+		var i := t * 3
 		var a: Vector3 = tris[i]
 		var b: Vector3 = tris[i + 1]
 		var c: Vector3 = tris[i + 2]
 		var tri_bounds := AABB(a, Vector3.ZERO).expand(b).expand(c)
 		if tri_bounds.intersects(reach):
+			work.left -= poly.size() + face_tris.size()
 			for k in poly.size():
 				if _segment_hits_triangle(poly[k], poly[(k + 1) % poly.size()], a, b, c):
 					return true
 			for k in 3:
 				var sa: Vector3 = tris[i + k]
 				var sb: Vector3 = tris[i + (k + 1) % 3]
-				for t in range(0, face_tris.size(), 3):
-					if _segment_hits_triangle(sa, sb, poly[face_tris[t]], poly[face_tris[t + 1]], poly[face_tris[t + 2]]):
+				for f in range(0, face_tris.size(), 3):
+					if _segment_hits_triangle(sa, sb, poly[face_tris[f]], poly[face_tris[f + 1]], poly[face_tris[f + 2]]):
 						return true
-		i += 3
 	return false
 
 ## True when [param face] has solid material on both of its sides inside [param solid]. Probing to both sides
 ## keeps a face resting on the solid's surface out of it, that one belongs to the coplanar pass. Brushes are
 ## convex, so their corners decide it. A closed mesh can be concave, there the face must also not cross its
 ## surface, so a face spanning an opening of the mesh is not wrongly counted as buried.
-static func _buried_in(solid: Solid, entry: Entry, budget: TrenchDotMesh.ClipBudget) -> bool:
+static func _buried_in(solid: Solid, entry: Entry, budget: TrenchDotMesh.ClipBudget, work: Work) -> bool:
 	var nudge := entry.normal * COPLANAR_DIST
 	var centroid := Vector3.ZERO
 	for p in entry.points:
@@ -127,9 +265,11 @@ static func _buried_in(solid: Solid, entry: Entry, budget: TrenchDotMesh.ClipBud
 	var samples := entry.points.duplicate()
 	samples.append(centroid)
 	for p in samples:
-		if not solid.contains(p + nudge) or not solid.contains(p - nudge):
+		if work.left <= 0:
 			return false
-	if solid.is_mesh and _crosses_surface(entry, solid, budget):
+		if not solid.contains(p + nudge, work) or not solid.contains(p - nudge, work):
+			return false
+	if solid.is_mesh and _crosses_surface(entry, solid, budget, work):
 		return false
 	return true
 
@@ -168,6 +308,7 @@ static func _solid(brush: FuncGodotData.BrushData, inv_scale: float) -> Solid:
 			solid.dists.append(face.plane.normal.dot(centroid))
 	if first or (solid.is_mesh and solid.tris.is_empty()) or (not solid.is_mesh and solid.normals.is_empty()):
 		return null
+	solid.reach = solid.bounds.grow(COPLANAR_DIST)
 	return solid
 
 ## Marks hidden faces, returns how many. [param map_path] names the map in warnings.
@@ -238,17 +379,24 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 	# pile of overlapping solids draws as one outer shell instead of every solid's whole surface.
 	var grid := _SolidGrid.new(solids)
 	var clip_budget := TrenchDotMesh.ClipBudget.new()
+	var interior := Work.new(INTERIOR_WORK)
 	for entry: Entry in entries:
 		if entry.face.render_hidden or not entry.closed:
 			continue
-		for si in grid.around(entry.bounds.get_center()):
+		if interior.left <= 0:
+			break
+		var around := grid.around(entry.bounds.get_center())
+		interior.left -= around.size()
+		for si in around:
 			var solid := solids[si]
 			if solid.brush == entry.brush or not solid.bounds.encloses(entry.bounds):
 				continue
-			if _buried_in(solid, entry, clip_budget):
+			if _buried_in(solid, entry, clip_budget, interior):
 				entry.face.render_hidden = true
 				hidden += 1
 				break
+	if interior.left <= 0:
+		push_warning("[TDM] %s has too many faces inside closed solids to test in time, some buried faces are still drawn" % map_path)
 	return hidden
 
 ## Buckets solids by the grid cells their bounds touch. A solid that encloses a face also holds the face's centre,
