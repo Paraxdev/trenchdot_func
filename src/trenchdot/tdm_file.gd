@@ -10,6 +10,11 @@ const _HEADER_SIZE := 24
 const _CHECK_SEED := 0x47544D43
 const _FLAG_ZSTD := 1
 const _MAX_RAW := 1 << 30
+## Note: zstd packs a gigabyte of zeros into a few dozen kilobytes, so a whole file gets one budget of unpacked bytes
+## and one of values, and the chunks past either are not read.
+const _MAX_FILE_RAW := 1 << 30
+const _MAX_VALUES := 1 << 24
+const _WIDE_VALUE := 1 << 16
 ## The same limit as MAX_TREE_DEPTH in crates/td_doc/src/binary.rs.
 const _MAX_TREE_DEPTH := 60
 const RECOVERED_LAYER := "Recovered"
@@ -64,6 +69,8 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 	var parents := PackedInt64Array()
 	var chunks := 0
 	var damaged := 0
+	var raw_left := _MAX_FILE_RAW
+	var values_left := [_MAX_VALUES]
 	var pos := MAGIC.size() + 4
 	while pos < bytes.size():
 		var h := _header(bytes, pos)
@@ -86,14 +93,21 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 		var tag: String = h["tag"]
 		if not tag in ["HEAD", "NODE", "END ", "LMAP"]:
 			continue
-		var value = _payload(bytes.slice(start, pos), h)
+		var lost: String = {
+			"NODE": ", the nodes stored in it are lost",
+			"HEAD": ", the worldspawn properties and editor state are lost",
+			"LMAP": ", the baked lighting is lost, bake it again in the editor",
+		}.get(tag, "")
+		var raw: int = h["raw"]
+		if raw > raw_left:
+			problems.append("the %s chunk at byte %d would unpack past the %d MiB a map may hold and was not read%s" % [tag.strip_edges(), at, _MAX_FILE_RAW >> 20, lost])
+			damaged += 1
+			continue
+		raw_left -= raw
+		var value = _payload(bytes.slice(start, pos), h, values_left)
 		if not value is Dictionary:
-			var lost: String = {
-				"NODE": ", the nodes stored in it are lost",
-				"HEAD": ", the worldspawn properties and editor state are lost",
-				"LMAP": ", the baked lighting is lost, bake it again in the editor",
-			}.get(tag, "")
-			problems.append("the %s chunk at byte %d is damaged%s" % [tag.strip_edges(), at, lost])
+			var why := "holds more values than a map may and was not read" if values_left[0] < 0 else "is damaged"
+			problems.append("the %s chunk at byte %d %s%s" % [tag.strip_edges(), at, why, lost])
 			damaged += 1
 			continue
 		match tag:
@@ -202,7 +216,11 @@ static func _next_sync(bytes: PackedByteArray, from: int) -> int:
 		at = bytes.find(0x89, at + 1)
 	return bytes.size()
 
-static func _payload(data: PackedByteArray, h: Dictionary) -> Variant:
+## The value a chunk holds. [param values_left] is the file's value budget, the first entry goes down by the values
+## read and below zero once a chunk holds more than is left.
+static func _payload(data: PackedByteArray, h: Dictionary, values_left: Array = [_MAX_VALUES]) -> Variant:
+	if values_left[0] < 0:
+		return null
 	var raw_size: int = h["raw"]
 	var raw := data
 	if int(h["flags"]) & _FLAG_ZSTD:
@@ -211,7 +229,66 @@ static func _payload(data: PackedByteArray, h: Dictionary) -> Variant:
 		raw = data.decompress(raw_size, FileAccess.COMPRESSION_ZSTD)
 	if raw.size() != raw_size:
 		return null
+	# Every value takes at least four bytes, so only a chunk that might pass the budget is counted value by value.
+	var values := raw_size / 4
+	if values > values_left[0]:
+		values = _count_values(raw, values_left[0])
+		if values < 0:
+			return null
+		if values > values_left[0]:
+			values_left[0] = -1
+			return null
+	values_left[0] -= values
 	return bytes_to_var(raw)
+
+## How many values [param raw] holds in the encoding the editor writes, see crates/td_doc/src/variant.rs, or -1 when
+## it holds anything else. Past [param limit] it stops and returns limit + 1. An array or dictionary counts its
+## elements before any is read, so a crafted count is refused at once.
+static func _count_values(raw: PackedByteArray, limit: int) -> int:
+	var size := raw.size()
+	var pos := 0
+	var count := 0
+	var pending := 1
+	while pending > 0:
+		pending -= 1
+		count += 1
+		if pos + 4 > size:
+			return -1
+		var header := raw.decode_u32(pos)
+		var type := header & 0xff
+		var wide := header == (type | _WIDE_VALUE) and (type == TYPE_INT or type == TYPE_FLOAT)
+		if header != type and not wide:
+			return -1
+		pos += 4
+		if type == TYPE_NIL:
+			continue
+		if type == TYPE_BOOL:
+			pos += 4
+			continue
+		if type == TYPE_INT or type == TYPE_FLOAT:
+			pos += 8 if wide else 4
+			continue
+		if pos + 4 > size:
+			return -1
+		var n := raw.decode_u32(pos)
+		pos += 4
+		match type:
+			TYPE_STRING, TYPE_PACKED_BYTE_ARRAY:
+				pos += (n + 3) & ~3
+			TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_FLOAT32_ARRAY:
+				pos += n * 4
+			TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT64_ARRAY:
+				pos += n * 8
+			TYPE_ARRAY, TYPE_DICTIONARY:
+				var items := (n & 0x7fffffff) * (2 if type == TYPE_DICTIONARY else 1)
+				if count + pending + items > limit:
+					return limit + 1
+				pending += items
+			_:
+				return -1
+		if pos > size:
+			return -1
+	return count
 
 ## Scatter instances stored as integer columns go back to one [code][item, x, y, z, pitch, yaw, roll, scale][/code]
 ## array each. The steps are INSTANCE_SCALES in crates/td_doc/src/variant.rs, and the divisions give exactly the
