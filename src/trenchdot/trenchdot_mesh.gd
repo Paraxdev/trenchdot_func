@@ -13,6 +13,11 @@ const MAX_CLIP_WORK := 1 << 22
 ## also share one [ClipBudget] of this much. Only a map made to stall a build runs out of it, and its later faces are
 ## fanned.
 const BUILD_CLIP_WORK := 1 << 24
+## Smoothing compares every corner with each face around its vertex. A mesh that takes more comparisons than this many
+## per corner, past the first [constant SMOOTH_PAIRS_FREE], is shaded flat instead, as td_geom::mesh::corner_normals
+## does.
+const SMOOTH_PAIRS_PER_CORNER := 64
+const SMOOTH_PAIRS_FREE := 1 << 18
 
 ## Ear clipping work left to a build, shared by the threads that convert its meshes. A face only looks at it before
 ## it starts, so a build may run past it by one face's budget per thread.
@@ -262,6 +267,18 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 				vertex_faces[int(idx)] = []
 			vertex_faces[int(idx)].append(fi)
 
+	var units := PackedVector3Array()
+	var raws := PackedVector3Array()
+	var pairs := 0
+	var corners := 0
+	for face_info in faces:
+		units.append(face_info["unit"])
+		raws.append(face_info["normal"])
+		for idx in face_info["indices"]:
+			pairs += vertex_faces[int(idx)].size()
+		corners += face_info["indices"].size()
+	if pairs > SMOOTH_PAIRS_PER_CORNER * corners + SMOOTH_PAIRS_FREE:
+		smooth_angle = 0.0
 	var cos_limit := cos(deg_to_rad(smooth_angle)) - 1e-6
 	var brush := _BrushData.new()
 	brush.exact = true
@@ -310,10 +327,9 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 			var n := unit
 			if smooth_angle > 0.0:
 				var sum := Vector3.ZERO
-				for other in vertex_faces.get(int(indices[k]), []):
-					var of: Dictionary = faces[other]
-					if (of["unit"] as Vector3).dot(unit) >= cos_limit:
-						sum += of["normal"]
+				for other: int in vertex_faces[int(indices[k])]:
+					if units[other].dot(unit) >= cos_limit:
+						sum += raws[other]
 				if sum.length_squared() > 1e-12:
 					n = sum.normalized()
 			face.disp_normals.append(TrenchDotParser.to_id(n))
