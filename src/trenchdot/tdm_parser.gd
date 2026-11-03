@@ -404,10 +404,11 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 		var disp = f.get("disp", null)
 		if disp is Dictionary and godot_points.size() == 4:
 			var power := int(disp.get("power", 3))
-			var side := (1 << power) + 1
-			var heights: Array = disp.get("heights", [])
-			if heights.size() == side * side:
-				var grid := TrenchDotDisplacement.build_grid(godot_points, normal.normalized(), power, heights)
+			# Untyped, an Array variable would copy a packed array of any length before its size is checked.
+			var heights = disp.get("heights", [])
+			var alphas = disp.get("alphas", [])
+			if TrenchDotDisplacement.fits(power, heights, alphas):
+				var grid := TrenchDotDisplacement.build_grid(godot_points, normal.normalized(), power, Array(heights))
 				for p in grid["positions"]:
 					face.disp_vertices.append(to_id(p) * scale)
 				for p in grid["base"]:
@@ -415,7 +416,7 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 				for nrm in grid["normals"]:
 					face.disp_normals.append(to_id(nrm))
 				face.disp_indices = grid["triangles"]
-				for a in disp.get("alphas", []):
+				for a in alphas:
 					face.disp_alphas.append(float(a))
 				brush.has_disp = true
 

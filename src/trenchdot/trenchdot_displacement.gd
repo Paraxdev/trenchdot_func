@@ -1,10 +1,25 @@
 class_name TrenchDotDisplacement extends RefCounted
 ## Builds displacement grids from TrenchDot face data and appends them to FuncGodot surface arrays.
 
+## The powers the editor allows, see Displacement::check_data in crates/td_geom/src/displacement.rs. A side has
+## 2^power + 1 vertices.
+const MIN_POWER := 1
+const MAX_POWER := 4
+
+## Whether [param heights] and [param alphas] as a map stores them fit a grid of [param power], alphas may be empty.
+static func fits(power: int, heights: Variant, alphas: Variant) -> bool:
+	if power < MIN_POWER or power > MAX_POWER or not _is_list(heights) or not _is_list(alphas):
+		return false
+	var n := (1 << power) + 1
+	return heights.size() == n * n and (alphas.is_empty() or alphas.size() == n * n)
+
+static func _is_list(v: Variant) -> bool:
+	return v is Array or v is PackedFloat32Array or v is PackedFloat64Array or v is PackedInt32Array or v is PackedInt64Array
+
 ## Grid data for a quad face. [param corners] are Godot space map units in face winding order
 ## (counter-clockwise around [param normal]); returns positions, base positions, normals and triangles.
 static func build_grid(corners: PackedVector3Array, normal: Vector3, power: int, heights: Array) -> Dictionary:
-	var n := (1 << power) + 1
+	var n := (1 << clampi(power, MIN_POWER, MAX_POWER)) + 1
 	var base := PackedVector3Array()
 	var positions := PackedVector3Array()
 	base.resize(n * n)
