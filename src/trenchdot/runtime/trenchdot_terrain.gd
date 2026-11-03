@@ -54,8 +54,8 @@ static var _nearest_shader: Shader
 ## The material resource a layer's texture name stands for, the one brushes with that texture get.
 static func _layer_material(texture_name: String, settings: FuncGodotMapSettings) -> Material:
 	var dir := settings.base_material_dir if settings.base_material_dir != "" else settings.base_texture_dir
-	var path := dir.path_join(texture_name + "." + settings.material_file_extension)
-	return load(path) if ResourceLoader.exists(path) else settings.default_material
+	var path := TrenchDotBuild.map_resource_path(dir.path_join(texture_name + "." + settings.material_file_extension), TrenchDotBuild.MATERIAL_FILES, texture_name)
+	return load(path) if path != "" and ResourceLoader.exists(path) else settings.default_material
 
 ## Layer textures use nearest filtering when their material resource does (pixel art projects).
 static func _is_pixelated(texture_name: String, settings: FuncGodotMapSettings) -> bool:

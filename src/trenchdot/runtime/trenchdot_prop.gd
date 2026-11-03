@@ -22,11 +22,12 @@ func rebuild() -> void:
 		if child.has_meta(&"td_prop_generated"):
 			remove_child(child)
 			child.free()
-	if model == "" or not ResourceLoader.exists(model):
-		if model != "" and not quiet_missing:
+	var path := TrenchDotBuild.map_resource_path(model, TrenchDotBuild.MODEL_FILES)
+	if path == "" or not ResourceLoader.exists(path):
+		if path != "" and not quiet_missing:
 			push_warning("[TrenchDot] prop model %s not found" % model)
 		return
-	var scene := load(model) as PackedScene
+	var scene := load(path) as PackedScene
 	if not scene:
 		return
 	var flag := PackedScene.GEN_EDIT_STATE_INSTANCE if Engine.is_editor_hint() else PackedScene.GEN_EDIT_STATE_DISABLED

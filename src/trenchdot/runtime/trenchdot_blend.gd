@@ -37,8 +37,8 @@ static func options(texture_name: String) -> Array:
 
 static func _material_file(texture_name: String, settings: FuncGodotMapSettings) -> Material:
 	var dir := settings.base_material_dir if settings.base_material_dir != "" else settings.base_texture_dir
-	var path := dir.path_join(texture_name + "." + settings.material_file_extension)
-	return load(path) if ResourceLoader.exists(path) else null
+	var path := TrenchDotBuild.map_resource_path(dir.path_join(texture_name + "." + settings.material_file_extension), TrenchDotBuild.MATERIAL_FILES, texture_name)
+	return load(path) if path != "" and ResourceLoader.exists(path) else null
 
 static func albedo(texture_name: String, settings: FuncGodotMapSettings) -> Texture2D:
 	var material := _material_file(texture_name, settings)
@@ -95,8 +95,8 @@ static func _apply_emission(material: ShaderMaterial, side: String, texture_name
 	if source or pattern.count("%s") != 1:
 		return
 	for ext in settings.texture_file_extensions:
-		var path := (pattern % settings.base_texture_dir.path_join(texture_name)) + "." + ext
-		if ResourceLoader.exists(path):
+		var path := TrenchDotBuild.map_resource_path((pattern % settings.base_texture_dir.path_join(texture_name)) + "." + ext, TrenchDotBuild.IMAGE_FILES, texture_name)
+		if path != "" and ResourceLoader.exists(path):
 			material.set_shader_parameter("emission_energy_" + side, 1.0)
 			material.set_shader_parameter("emission_texture_" + side, load(path))
 			return

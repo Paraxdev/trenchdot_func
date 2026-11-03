@@ -14,15 +14,17 @@ const _MAX_RAW := 1 << 30
 const _MAX_TREE_DEPTH := 60
 const RECOVERED_LAYER := "Recovered"
 
-## Reads [param path], or the copy Godot imported when only that is there, as in an exported game. Returns
+## Reads [param path], or in an exported game, which packs only the copy Godot imported, that copy. Returns
 ## [code]{ "map": Dictionary or null, "error": String, "problems": PackedStringArray, "content": int }[/code], see
 ## [method decode].
 static func read(path: String) -> Dictionary:
 	if FileAccess.file_exists(path):
 		return decode(FileAccess.get_file_as_bytes(path))
-	var imported: Resource = load(path) if ResourceLoader.exists(path) else null
-	if imported is TrenchDotImportedMap:
-		return decode(imported.map_bytes)
+	# Note: loading runs any script a resource embeds. Only an exported game loads, it holds nothing but its own files.
+	if OS.has_feature("template") and path.begins_with("res://") and path.get_extension().to_lower() == "tdm" and ResourceLoader.exists(path):
+		var imported: Resource = load(path)
+		if imported is TrenchDotImportedMap:
+			return decode(imported.map_bytes)
 	return _failed("cannot read %s" % path)
 
 ## Reads [param path] and reports what a damaged file lost as warnings. Returns the map, or null after reporting why

@@ -337,9 +337,12 @@ static func apply_properties(node: Node, properties: Dictionary) -> bool:
 				value = NodePath(str(value))
 			TYPE_OBJECT:
 				if value is String:
-					if not ResourceLoader.exists(value):
+					var path := TrenchDotBuild.map_resource_path(value, TrenchDotBuild.MODEL_FILES + TrenchDotBuild.IMAGE_FILES + TrenchDotBuild.SOUND_FILES)
+					if path == "":
+						continue
+					if not ResourceLoader.exists(path):
 						push_warning("[TD] %s: resource %s for %s not found" % [node.name, value, member])
 						continue
-					value = load(value)
+					value = load(path)
 		node.set(member, value)
 	return true

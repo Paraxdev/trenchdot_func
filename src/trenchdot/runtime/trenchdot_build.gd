@@ -11,8 +11,43 @@ const SOURCE_HASH_META := &"_td_source_hash"
 ## Project setting: build steps that only compute data run on the WorkerThreadPool.
 const SETTING_THREADED := "trenchdot/threaded_build"
 
+## File kinds a map key may name, see [method map_resource_path].
+const MODEL_FILES: PackedStringArray = ["glb", "gltf", "bbmodel", "obj", "fbx", "blend", "tscn", "scn"]
+const IMAGE_FILES: PackedStringArray = ["png", "jpg", "jpeg", "webp", "svg", "tga", "bmp", "hdr", "exr", "dds", "ktx"]
+const SOUND_FILES: PackedStringArray = ["ogg", "wav", "mp3"]
+const MATERIAL_FILES: PackedStringArray = ["tres", "res", "material"]
+const SCENE_FILES: PackedStringArray = ["tscn", "scn"]
+const MAP_FILES: PackedStringArray = ["tdm"]
+
+## Paths [method map_resource_path] refused while a [FuncGodotMap] builds, whose report lists them. Outside a build
+## each path it refuses warns once.
+static var refused_paths: Dictionary = {}
+static var collecting_refused := false
+
 static func threaded() -> bool:
 	return bool(ProjectSettings.get_setting(SETTING_THREADED, true))
+
+## [param path] from a map, simplified, when it names a file inside the project with one of [param extensions], else
+## empty. uid:// paths count by the file they stand for. Loading a resource runs any script it embeds, so a map only
+## reaches files of the kind its key is for, and never ones outside the project. A name the map gave, which
+## [param path] joins to a folder, passes as [param named], so a refusal lists that name once.
+static func map_resource_path(path: String, extensions: PackedStringArray, named := "") -> String:
+	if path == "":
+		return ""
+	var simple := path
+	if simple.begins_with("uid://"):
+		var id := ResourceUID.text_to_id(simple)
+		simple = ResourceUID.get_id_path(id) if ResourceUID.has_id(id) else ""
+	simple = simple.simplify_path()
+	if simple.begins_with("res://") and not ".." in simple.trim_prefix("res://").split("/") and simple.get_extension().to_lower() in extensions:
+		return simple
+	var shown := named if named != "" else path
+	if collecting_refused:
+		refused_paths[shown] = true
+	elif not refused_paths.has(shown):
+		refused_paths[shown] = true
+		push_warning("[TrenchDot] %s is not loaded, a map may only name %s files inside the project" % [shown, ", ".join(extensions)])
+	return ""
 
 ## Owner for generated nodes: the edited scene when the map is part of it, so the nodes are saved with the scene.
 static func scene_owner(map_node: Node) -> Node:

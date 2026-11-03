@@ -71,17 +71,18 @@ const _pbr_features: PackedInt32Array = [
 ## Searches for a Texture2D within the base texture directory. If not found, a default texture is returned.
 static func load_texture(texture_name: String, map_settings: FuncGodotMapSettings) -> Texture2D:
 	for texture_file_extension in map_settings.texture_file_extensions:
-		var texture_path: String = map_settings.base_texture_dir.path_join(texture_name + "." + texture_file_extension)
-		if ResourceLoader.exists(texture_path):
+		var texture_path: String = TrenchDotBuild.map_resource_path(map_settings.base_texture_dir.path_join(texture_name + "." + texture_file_extension), TrenchDotBuild.IMAGE_FILES, texture_name)
+		if texture_path != "" and ResourceLoader.exists(texture_path):
 			var texture_file = load(texture_path)
 			if texture_file is Texture2D:
 				return texture_file
 			else:
 				printerr("Error: Texture load failed! (%s) not a valid Texture2D resource", texture_path)
 	
-	var builtin: String = builtin_texture_dir.path_join(texture_name + ".png")
-	if texture_name.begins_with("dev/") and ResourceLoader.exists(builtin):
-		return load(builtin)
+	if texture_name.begins_with("dev/"):
+		var builtin: String = TrenchDotBuild.map_resource_path(builtin_texture_dir.path_join(texture_name + ".png"), TrenchDotBuild.IMAGE_FILES, texture_name)
+		if builtin != "" and ResourceLoader.exists(builtin):
+			return load(builtin)
 	return load(default_texture_path)
 
 ## Folders and names of tool textures that build no visual mesh besides the four the map settings name. The
@@ -185,7 +186,8 @@ static func build_base_material(map_settings: FuncGodotMapSettings, material: Ba
 					else:
 						pbr = pbr_suffixes[i] % [path]
 						pbr += "." + texture_file_extension
-					if ResourceLoader.exists(pbr):
+					pbr = TrenchDotBuild.map_resource_path(pbr, TrenchDotBuild.IMAGE_FILES, texture)
+					if pbr != "" and ResourceLoader.exists(pbr):
 						print(pbr)
 						if _pbr_features[i] > -1:
 							material.set_feature(_pbr_features[i], true)
@@ -238,9 +240,9 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 
 				var material_path: String = map_settings.base_material_dir if not map_settings.base_material_dir.is_empty() else map_settings.base_texture_dir
 				material_path = material_path.path_join(texture_name) + "." + map_settings.material_file_extension
-				material_path = material_path.replace("*", "")
+				material_path = TrenchDotBuild.map_resource_path(material_path.replace("*", ""), TrenchDotBuild.MATERIAL_FILES, texture_name)
 				
-				if ResourceLoader.exists(material_path):
+				if material_path != "" and ResourceLoader.exists(material_path):
 					var material: Material = load(material_path)
 					texture_materials[texture_name] = material
 					if material is BaseMaterial3D:
@@ -279,12 +281,12 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 								continue
 							for texture_file_extension in map_settings.texture_file_extensions:
 								var uniform_texture_path: String = map_settings.shader_material_uniform_map_patterns[uniform] % [texture_name] + "." + texture_file_extension
-								uniform_texture_path = path.path_join(uniform_texture_path)
-								if ResourceLoader.exists(uniform_texture_path):
+								uniform_texture_path = TrenchDotBuild.map_resource_path(path.path_join(uniform_texture_path), TrenchDotBuild.IMAGE_FILES, texture_name)
+								if uniform_texture_path != "" and ResourceLoader.exists(uniform_texture_path):
 									material.set_shader_parameter(uniform, load(uniform_texture_path))
 									break
 					
-					if (map_settings.save_generated_materials and material 
+					if (map_settings.save_generated_materials and material and material_path != ""
 						and texture_name != map_settings.clip_texture 
 						and texture_name != map_settings.skip_texture 
 						and texture_name != map_settings.origin_texture 

@@ -428,10 +428,16 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 	return brush
 
 
+## The prefab an instance names, empty unless it is a .tdm in the project. A relative path is beside the map that
+## names it and may not climb out with "..", so it only leaves the project for a map that is outside it already.
 static func _resolve_instance_path(ctx: Context, path: String) -> String:
-	if path.begins_with("res://") or path.begins_with("user://") or path.is_absolute_path():
-		return path
-	return ctx.map_path.get_base_dir().path_join(path)
+	if path.begins_with("res://") or path.begins_with("uid://"):
+		return TrenchDotBuild.map_resource_path(path, TrenchDotBuild.MAP_FILES)
+	var rel := path.simplify_path()
+	if rel == "" or rel.is_absolute_path() or rel.contains(":") or ".." in rel.split("/") or rel.get_extension().to_lower() != "tdm":
+		return TrenchDotBuild.map_resource_path(path, TrenchDotBuild.MAP_FILES)
+	var resolved := ctx.map_path.get_base_dir().path_join(rel)
+	return TrenchDotBuild.map_resource_path(resolved, TrenchDotBuild.MAP_FILES) if resolved.begins_with("res://") else resolved
 
 
 ## [param name] as named inside the instance being parsed. Special (!self), group (@doors) and node path targets are
@@ -468,6 +474,8 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 		push_error("[TDM] instance nesting deeper than %d, skipping %s" % [MAX_INSTANCE_DEPTH, node.get("path", "")])
 		return
 	var path := _resolve_instance_path(ctx, str(node.get("path", "")))
+	if path == "":
+		return
 	var json = TrenchDotTdmFile.load_map(path)
 	if json == null or not _readable(json, path):
 		return

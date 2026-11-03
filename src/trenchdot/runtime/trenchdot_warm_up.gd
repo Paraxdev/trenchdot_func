@@ -35,7 +35,6 @@ const _COMPILATIONS: Array[int] = [
 	RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW,
 	RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION,
 ]
-const _SCENE_EXTENSIONS: PackedStringArray = ["tscn", "scn", "glb", "gltf", "bbmodel", "blend", "fbx", "obj"]
 
 ## Nodes, [PackedScene]s, [Mesh]es and [Material]s to warm up.
 var sources: Array = []
@@ -198,9 +197,10 @@ static func _collect_tree(root: Node, out: Array[Node3D], seen: Dictionary, scen
 static func _referenced_scene(value: Variant) -> PackedScene:
 	if value is PackedScene:
 		return value
-	if value is String and (value as String).get_extension().to_lower() in _SCENE_EXTENSIONS and ResourceLoader.exists(value):
-		return load(value) as PackedScene
-	return null
+	if not value is String or not (value as String).get_extension().to_lower() in TrenchDotBuild.MODEL_FILES:
+		return null
+	var path := TrenchDotBuild.map_resource_path(value, TrenchDotBuild.MODEL_FILES)
+	return load(path) as PackedScene if path != "" and ResourceLoader.exists(path) else null
 
 ## Reads the scene's nodes without instancing it, so none of its scripts run.
 static func _collect_scene(scene: PackedScene, out: Array[Node3D], seen: Dictionary, scenes: Dictionary) -> void:

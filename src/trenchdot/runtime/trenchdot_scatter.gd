@@ -138,8 +138,8 @@ static func _item_material(data: Dictionary, item: Dictionary, settings: FuncGod
 	if name == "":
 		return null
 	var dir: String = settings.base_material_dir if settings.base_material_dir != "" else settings.base_texture_dir
-	var path := dir.path_join(name + "." + settings.material_file_extension)
-	if ResourceLoader.exists(path):
+	var path := TrenchDotBuild.map_resource_path(dir.path_join(name + "." + settings.material_file_extension), TrenchDotBuild.MATERIAL_FILES, name)
+	if path != "" and ResourceLoader.exists(path):
 		return load(path) as Material
 	# No material resource for the name, fall back to its plain texture.
 	var texture := FuncGodotUtil.load_texture(name, settings)
@@ -217,10 +217,12 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 		if buckets.is_empty():
 			continue
 		var source := str(items[k].get("source", ""))
-		if source == "" or not ResourceLoader.exists(source):
-			push_warning("[TrenchDot] scatter model %s not found" % source)
+		var path := TrenchDotBuild.map_resource_path(source, TrenchDotBuild.MODEL_FILES)
+		if path == "" or not ResourceLoader.exists(path):
+			if path != "" or source == "":
+				push_warning("[TrenchDot] scatter model %s not found" % source)
 			continue
-		var scene := load(source) as PackedScene
+		var scene := load(path) as PackedScene
 		if not scene:
 			continue
 		var template := scene.instantiate()

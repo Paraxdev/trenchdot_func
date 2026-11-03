@@ -19,11 +19,11 @@ func _notification(what: int) -> void:
 		size = _map_size / TrenchDotIO.units_per_meter(self)
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
-	var tex = props.get("texture", "")
-	if tex is String and tex != "" and ResourceLoader.exists(tex):
+	var tex := TrenchDotBuild.map_resource_path(str(props.get("texture", "")), TrenchDotBuild.IMAGE_FILES)
+	if tex != "" and ResourceLoader.exists(tex):
 		texture_albedo = load(tex)
-	var normal_tex = props.get("normal_texture", "")
-	if normal_tex is String and normal_tex != "" and ResourceLoader.exists(normal_tex):
+	var normal_tex := TrenchDotBuild.map_resource_path(str(props.get("normal_texture", "")), TrenchDotBuild.IMAGE_FILES)
+	if normal_tex != "" and ResourceLoader.exists(normal_tex):
 		texture_normal = load(normal_tex)
 	var s = props.get("size", DEFAULT_SIZE)
 	if s is String:
@@ -55,14 +55,15 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 static func _material(name: String) -> BaseMaterial3D:
 	if name == "":
 		return null
-	if name.begins_with("res://"):
-		return load(name) as BaseMaterial3D if ResourceLoader.exists(name) else null
+	if name.begins_with("res://") or name.begins_with("uid://"):
+		var file := TrenchDotBuild.map_resource_path(name, TrenchDotBuild.MATERIAL_FILES)
+		return load(file) as BaseMaterial3D if file != "" and ResourceLoader.exists(file) else null
 	var settings := load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres")) as FuncGodotMapSettings
 	if not settings:
 		return null
 	var dir := settings.base_material_dir if not settings.base_material_dir.is_empty() else settings.base_texture_dir
-	var path := dir.path_join(name) + "." + settings.material_file_extension
-	if ResourceLoader.exists(path):
+	var path := TrenchDotBuild.map_resource_path(dir.path_join(name) + "." + settings.material_file_extension, TrenchDotBuild.MATERIAL_FILES)
+	if path != "" and ResourceLoader.exists(path):
 		return load(path) as BaseMaterial3D
 	var texture := FuncGodotUtil.load_texture(name, settings)
 	if not texture or texture.resource_path == FuncGodotUtil.default_texture_path:

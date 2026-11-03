@@ -75,7 +75,7 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 
 static func _world_environment(properties: Dictionary) -> WorldEnvironment:
 	var sky_energy := maxf(str(properties.get("sky_energy", "1")).to_float(), 0.0)
-	var panorama_path := str(properties.get("sky_panorama", ""))
+	var panorama_path := TrenchDotBuild.map_resource_path(str(properties.get("sky_panorama", "")), TrenchDotBuild.IMAGE_FILES)
 	var sky := Sky.new()
 	if panorama_path != "" and ResourceLoader.exists(panorama_path):
 		var panorama := PanoramaSkyMaterial.new()

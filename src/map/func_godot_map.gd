@@ -142,6 +142,7 @@ func build_from_text(text: String) -> Dictionary:
 
 func _report(report: TrenchDotBuildReport) -> Dictionary:
 	report.finish()
+	report.take_refused_paths()
 	build_report = report.to_dictionary()
 	if build_flags & BuildFlags.PRINT_REPORT:
 		report.print_report()
@@ -150,6 +151,7 @@ func _report(report: TrenchDotBuildReport) -> Dictionary:
 func _build(text: String) -> TrenchDotBuildReport:
 	var time_elapsed: float = Time.get_ticks_msec()
 	var report := TrenchDotBuildReport.new(global_map_file if global_map_file != "" else local_map_file)
+	report.collect_refused_paths()
 	report.step("Clearing the map node")
 
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:

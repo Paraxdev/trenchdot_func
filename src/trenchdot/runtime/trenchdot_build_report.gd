@@ -1,7 +1,8 @@
 class_name TrenchDotBuildReport extends RefCounted
 ## What one [FuncGodotMap] build made and what it could not find: the time of each step, entities per class, the
 ## vertex count, missing entity definitions, models and materials, tool textures the map settings do not know,
-## targets that match no node in the map, and logic_script entities that carry GDScript. [method FuncGodotMap.build]
+## targets that match no node in the map, logic_script entities that carry GDScript, and resource paths it refused to
+## load because they point outside the project or at the wrong kind of file. [method FuncGodotMap.build]
 ## returns it as [method to_dictionary] and keeps it in [member FuncGodotMap.build_report]. The
 ## [code]Print Build Report[/code] build flag prints it.
 
@@ -31,6 +32,8 @@ var unknown_tool_textures: Dictionary = {}
 var unresolved_targets: Array[Dictionary] = []
 ## Names of the logic_script entities whose source or expression holds code, which runs when the scene plays.
 var map_scripts: PackedStringArray = []
+## Paths the map names that [method TrenchDotBuild.map_resource_path] refused.
+var refused_paths: PackedStringArray = []
 
 var _start := 0
 var _step := ""
@@ -51,6 +54,19 @@ func step(name: String) -> void:
 func finish() -> void:
 	step("")
 
+## Starts collecting the paths [method TrenchDotBuild.map_resource_path] refuses, until [method take_refused_paths].
+func collect_refused_paths() -> void:
+	TrenchDotBuild.refused_paths.clear()
+	TrenchDotBuild.collecting_refused = true
+
+## Keeps the refused paths and warns once for each.
+func take_refused_paths() -> void:
+	TrenchDotBuild.collecting_refused = false
+	refused_paths = PackedStringArray(TrenchDotBuild.refused_paths.keys())
+	TrenchDotBuild.refused_paths.clear()
+	for path in refused_paths:
+		push_warning("[TrenchDot] the map names %s, which is not loaded: maps may only name models, images, sounds, materials and prefabs inside the project" % path)
+
 func time_ms() -> float:
 	return (Time.get_ticks_usec() - _start) / 1000.0 if steps.is_empty() else steps.reduce(func(sum, s): return sum + s["ms"], 0.0)
 
@@ -66,7 +82,10 @@ func check_entities(data: Array[FuncGodotData.EntityData]) -> void:
 			missing_classes.append(classname)
 		var model := str(entity.properties.get("model", "")).strip_edges()
 		# Quake brush entities keep their brush model as "*1".
-		if model == "" or model.begins_with("*") or model.get_extension() == "" or ResourceLoader.exists(model):
+		if model == "" or model.begins_with("*") or model.get_extension() == "":
+			continue
+		var path := TrenchDotBuild.map_resource_path(model, TrenchDotBuild.MODEL_FILES)
+		if path == "" or ResourceLoader.exists(path):
 			continue
 		if not missing_models.has(model):
 			missing_models[model] = []
@@ -156,6 +175,7 @@ func to_dictionary() -> Dictionary:
 		"unknown_tool_textures": unknown_tool_textures,
 		"unresolved_targets": unresolved_targets,
 		"map_scripts": map_scripts,
+		"refused_paths": refused_paths,
 	}
 
 func print_report() -> void:
@@ -182,6 +202,8 @@ func print_report() -> void:
 		print("  %s targets '%s', which matches nothing in this map" % [t["entity"], t["target"]])
 	if not map_scripts.is_empty():
 		print("  logic_script entities with GDScript: ", ", ".join(map_scripts))
+	if not refused_paths.is_empty():
+		print("  not loaded, outside the project or the wrong kind of file: ", ", ".join(refused_paths))
 
 static func _resolves(target: String, names: Dictionary) -> bool:
 	if target == "" or target.begins_with("!") or target.begins_with("@") or target.begins_with("/") or target.begins_with("%"):
