@@ -24,6 +24,8 @@ var texture_materials: Dictionary[String, Material]
 var texture_sizes: Dictionary[String, Vector2]
 ## Sizes that replace a texture's own, see [member FuncGodotData.ParseData.texture_sizes].
 var size_overrides: Dictionary[String, Vector2] = {}
+## The map being built, named in warnings.
+var map_path: String = ""
 
 # Signals
 
@@ -660,7 +662,7 @@ func build(build_flags: int, entities: Array[_EntityData]) -> Error:
 	#	WorkerThreadPool.wait_for_group_task_completion(task_id)
 	
 	declare_step.emit("Hiding covered coplanar faces")
-	TrenchDotFaceCull.apply(entity_data, map_settings, texture_materials)
+	TrenchDotFaceCull.apply(entity_data, map_settings, texture_materials, map_path)
 
 	declare_step.emit("Generating surfaces")
 	# Surfaces create ArrayMesh resources, which is not safe from several threads at once

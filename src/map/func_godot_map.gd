@@ -198,6 +198,7 @@ func _build(text: String) -> TrenchDotBuildReport:
 	# Retrieve geometry
 	var generator := FuncGodotGeometryGenerator.new(map_settings, hyperplane_size)
 	generator.size_overrides = parse_data.texture_sizes
+	generator.map_path = _map_file_internal
 	generator.declare_step.connect(report.step)
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nGEOMETRY GENERATOR")

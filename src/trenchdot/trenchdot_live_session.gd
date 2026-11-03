@@ -434,7 +434,9 @@ func _map_with(children: Array) -> Dictionary:
 	return { "format": TrenchDotParser.FORMAT_NAME, "properties": model.get("properties", {}), "layers": [{ "type": "layer", "id": 0, "name": "", "children": children }] }
 
 func _generate(map: FuncGodotMap, entities: Array[FuncGodotData.EntityData]) -> FuncGodotEntityAssembler:
-	FuncGodotGeometryGenerator.new(map.map_settings, map.hyperplane_size).build(map.build_flags, entities)
+	var generator := FuncGodotGeometryGenerator.new(map.map_settings, map.hyperplane_size)
+	generator.map_path = path
+	generator.build(map.build_flags, entities)
 	var assembler := FuncGodotEntityAssembler.new(map.map_settings)
 	assembler.build_flags = map.build_flags
 	return assembler

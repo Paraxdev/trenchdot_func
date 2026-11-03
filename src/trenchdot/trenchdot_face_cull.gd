@@ -10,6 +10,16 @@ const COPLANAR_DIST := 0.02
 const SAME_NORMAL := 0.9995
 const MIN_AREA := 0.01
 const MOVING_CLASSES := ["Area3D", "AnimatableBody3D", "RigidBody3D", "CharacterBody3D", "VehicleBody3D"]
+## Bounds tests and polygon corners flattened, clipped and returned by clipping that the coplanar pass of one build
+## may spend. Past it, or once a single clip could take more than is left, the faces still to be tested are kept.
+## Only a map made to stall a build gets there.
+const COPLANAR_WORK := 1 << 23
+## Most grid cells a face is bucketed in by the coplanar pass, see [method _touching].
+const MAX_FACE_CELLS := 64
+
+## What is left of [constant COPLANAR_WORK] to a build.
+class Work:
+	var left := COPLANAR_WORK
 
 class Entry:
 	var face: FuncGodotData.FaceData
@@ -160,8 +170,8 @@ static func _solid(brush: FuncGodotData.BrushData, inv_scale: float) -> Solid:
 		return null
 	return solid
 
-## Marks hidden faces, returns how many.
-static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodotMapSettings, materials: Dictionary) -> int:
+## Marks hidden faces, returns how many. [param map_path] names the map in warnings.
+static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodotMapSettings, materials: Dictionary, map_path := "") -> int:
 	var inv_scale := 1.0 / maxf(settings.scale_factor, 1e-9)
 	var planes: Dictionary = {}
 	var entries: Array[Entry] = []
@@ -197,23 +207,32 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 					planes[key].append(entry)
 
 	var hidden := 0
+	var work := Work.new()
 	for members: Array in planes.values():
 		if members.size() < 2:
 			continue
-		for entry: Entry in members:
+		var near := _touching(members, work)
+		for i in members.size():
+			if work.left <= 0:
+				break
+			var entry: Entry = members[i]
 			var covers: Array[PackedVector2Array] = []
 			var basis := _plane_basis(entry.normal)
-			for other: Entry in members:
-				if other.brush == entry.brush or not other.bounds.grow(COPLANAR_DIST).intersects(entry.bounds.grow(COPLANAR_DIST)):
-					continue
+			for j in near[i]:
+				var other: Entry = members[j]
 				var dot := other.normal.dot(entry.normal)
 				var overlap := dot > SAME_NORMAL and absf(other.dist - entry.dist) < COPLANAR_DIST and _before(other.priority, entry.priority)
 				var backing := dot < -SAME_NORMAL and absf(other.dist + entry.dist) < COPLANAR_DIST and other.closed and entry.closed
 				if overlap or backing:
+					work.left -= other.points.size()
+					if work.left <= 0:
+						break
 					covers.append(_flatten(other.points, basis))
-			if not covers.is_empty() and fully_covered(_flatten(entry.points, basis), covers):
+			if not covers.is_empty() and work.left > 0 and fully_covered(_flatten(entry.points, basis), covers, work):
 				entry.face.render_hidden = true
 				hidden += 1
+	if work.left <= 0:
+		push_warning("[TDM] %s has too many coplanar faces to compare in time, some covered faces are still drawn" % map_path)
 
 	# Interior faces: a face buried inside another closed solid never shows, however the two intersect, so a
 	# pile of overlapping solids draws as one outer shell instead of every solid's whole surface.
@@ -267,8 +286,76 @@ class _SolidGrid:
 		out.sort()
 		return out
 
-## True when [param covers] leave nothing of [param polygon] larger than a sliver.
-static func fully_covered(polygon: PackedVector2Array, covers: Array[PackedVector2Array]) -> bool:
+## For each of [param members], the others of another solid whose bounds touch its own, in their order in
+## [param members]. Faces are bucketed in a grid the size of the typical face among them, so a plane holding
+## thousands of faces is not tested pair by pair. A face spanning more cells than [constant MAX_FACE_CELLS] is
+## tested against all of them.
+static func _touching(members: Array, work: Work) -> Array[PackedInt32Array]:
+	var n := members.size()
+	var near: Array[PackedInt32Array] = []
+	var grown: Array[AABB] = []
+	var sizes := PackedFloat32Array()
+	var solids := {}
+	for entry: Entry in members:
+		var b := entry.bounds.grow(COPLANAR_DIST)
+		near.append(PackedInt32Array())
+		grown.append(b)
+		sizes.append(b.get_longest_axis_size())
+		solids[entry.brush] = true
+	if solids.size() < 2:
+		return near
+	sizes.sort()
+	var cell := sizes[n / 2]
+	var cells := {}
+	var large := PackedInt32Array()
+	var lows: Array[Vector3i] = []
+	var highs: Array[Vector3i] = []
+	for i in n:
+		var lo := (grown[i].position / cell).floor()
+		var hi := (grown[i].end / cell).floor()
+		var span := hi - lo + Vector3.ONE
+		var reach := lo.abs().max(hi.abs())
+		if span.x * span.y * span.z > MAX_FACE_CELLS or maxf(maxf(reach.x, reach.y), reach.z) > 1e9:
+			large.append(i)
+			lows.append(Vector3i.ONE)
+			highs.append(Vector3i.ZERO)
+			continue
+		lows.append(Vector3i(lo))
+		highs.append(Vector3i(hi))
+		for x in range(lows[i].x, highs[i].x + 1):
+			for y in range(lows[i].y, highs[i].y + 1):
+				for z in range(lows[i].z, highs[i].z + 1):
+					var key := Vector3i(x, y, z)
+					if not cells.has(key):
+						cells[key] = PackedInt32Array()
+					cells[key].append(i)
+	var everyone := PackedInt32Array(range(n))
+	var seen := PackedInt32Array()
+	seen.resize(n)
+	seen.fill(-1)
+	for i in n:
+		var lists: Array[PackedInt32Array] = [everyone]
+		if lows[i].x <= highs[i].x:
+			lists = [large]
+			for x in range(lows[i].x, highs[i].x + 1):
+				for y in range(lows[i].y, highs[i].y + 1):
+					for z in range(lows[i].z, highs[i].z + 1):
+						lists.append(cells[Vector3i(x, y, z)])
+		for list in lists:
+			work.left -= list.size()
+			for j in list:
+				if seen[j] != i:
+					seen[j] = i
+					if members[j].brush != members[i].brush and grown[j].intersects(grown[i]):
+						near[i].append(j)
+		if work.left <= 0:
+			break
+		near[i].sort()
+	return near
+
+## True when [param covers] leave nothing of [param polygon] larger than a sliver. Clipping takes from
+## [param work], once it runs out the polygon counts as showing.
+static func fully_covered(polygon: PackedVector2Array, covers: Array[PackedVector2Array], work: Work = null) -> bool:
 	var remaining: Array[PackedVector2Array] = [_counter_clockwise(polygon)]
 	var pending: Array[PackedVector2Array] = []
 	for cover in covers:
@@ -278,22 +365,36 @@ static func fully_covered(polygon: PackedVector2Array, covers: Array[PackedVecto
 	var progress := true
 	while progress and not pending.is_empty() and not remaining.is_empty():
 		progress = false
-		for cover in pending.duplicate():
+		var waiting: Array[PackedVector2Array] = []
+		for cover in pending:
+			if remaining.is_empty():
+				break
 			var next: Array[PackedVector2Array] = []
 			var makes_hole := false
 			for piece in remaining:
-				for p in Geometry2D.clip_polygons(piece, cover):
+				# Two polygons cross at most once per pair of edges, so this bounds what clipping them takes and
+				# returns.
+				if work and piece.size() * cover.size() > work.left:
+					work.left = 0
+					return false
+				var pieces := Geometry2D.clip_polygons(piece, cover)
+				if work:
+					work.left -= piece.size() + cover.size()
+				for p in pieces:
+					if work:
+						work.left -= p.size()
 					if Geometry2D.is_polygon_clockwise(p):
 						makes_hole = true
 					elif absf(_area(p)) >= MIN_AREA:
 						next.append(p)
+				if work and work.left <= 0:
+					return false
 			if makes_hole:
+				waiting.append(cover)
 				continue
 			remaining = next
-			pending.erase(cover)
 			progress = true
-			if remaining.is_empty():
-				break
+		pending = waiting
 	return remaining.is_empty()
 
 static func _static_entity(entity: FuncGodotData.EntityData) -> bool:
