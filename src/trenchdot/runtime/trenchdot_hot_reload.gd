@@ -3,6 +3,9 @@ class_name TrenchDotHotReload extends Node
 ## Add it as an autoload (Project Settings > Globals) or instance it in a debug scene.
 ## Same protocol as the editor live link, on port 7843 by default.
 
+## A peer whose unfinished line grows past this many characters is dropped, a map_saved line is far shorter.
+const MAX_BUFFER := 64 << 10
+
 @export var port := 7843
 @export var enabled_in_exported_builds := false
 
@@ -33,6 +36,8 @@ func _process(_delta: float) -> void:
 		var peer := _server.take_connection()
 		_peers.append(peer)
 		_buffers[peer] = ""
+	# Saved path to the peers waiting for its reply, so however many saves arrive in a frame each map builds once.
+	var saved := {}
 	for peer: StreamPeerTCP in _peers.duplicate():
 		peer.poll()
 		if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
@@ -45,15 +50,37 @@ func _process(_delta: float) -> void:
 			continue
 		_buffers[peer] += peer.get_utf8_string(available)
 		var buffer: String = _buffers[peer]
+		var foreign := false
 		while buffer.contains("\n"):
 			var line := buffer.get_slice("\n", 0)
 			buffer = buffer.substr(line.length() + 1)
-			var msg = JSON.parse_string(line)
-			var reply := { "ok": false }
+			# Note: anything but a JSON object per line, like the HTTP request a web page sends, ends the connection.
+			if not line.begins_with("{"):
+				foreign = true
+				break
+			var json := JSON.new()
+			var msg: Variant = json.data if json.parse(line) == OK else null
 			if msg is Dictionary and msg.get("event", "") == "map_saved":
-				reply = { "ok": true, "rebuilt": reload(str(msg.get("path", ""))) }
-			peer.put_data((JSON.stringify(reply) + "\n").to_utf8_buffer())
+				var path := str(msg.get("path", "")).replace("\\", "/").to_lower()
+				if not saved.has(path):
+					saved[path] = []
+				saved[path].append(peer)
+			else:
+				peer.put_data((JSON.stringify({ "ok": false }) + "\n").to_utf8_buffer())
+		if foreign or buffer.length() > MAX_BUFFER:
+			_drop(peer)
+			continue
 		_buffers[peer] = buffer
+	for path: String in saved:
+		var reply := (JSON.stringify({ "ok": true, "rebuilt": reload(path) }) + "\n").to_utf8_buffer()
+		for peer: StreamPeerTCP in saved[path]:
+			if peer.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+				peer.put_data(reply)
+
+func _drop(peer: StreamPeerTCP) -> void:
+	peer.disconnect_from_host()
+	_peers.erase(peer)
+	_buffers.erase(peer)
 
 ## The absolute, lowercased file [param map] builds from, with uid:// resolved, for comparing against saved paths.
 static func map_path_key(map: FuncGodotMap) -> String:

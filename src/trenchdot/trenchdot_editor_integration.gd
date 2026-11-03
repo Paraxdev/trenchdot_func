@@ -25,6 +25,8 @@ const MIN_PORT := 1024
 const MAX_PORT := 65535
 ## How often to try the port again while another program holds it.
 const LISTEN_RETRY_MSEC := 3000
+## A peer whose unfinished line grows past this is dropped. The map texts TrenchDot sends stay far below it.
+const MAX_BUFFER := 64 << 20
 
 var plugin: EditorPlugin
 var _server: TCPServer
@@ -224,10 +226,28 @@ func _process(_delta: float) -> void:
 			continue
 		var buffer: PackedByteArray = _buffers[peer]
 		buffer.append_array(received[1])
+		# A long line is only split once its newline arrives, not searched again with every read.
+		if (received[1] as PackedByteArray).find(10) < 0:
+			_buffers[peer] = buffer
+			if buffer.size() > MAX_BUFFER:
+				_drop(peer)
+			continue
 		var split := take_lines(buffer)
 		_buffers[peer] = split[1]
 		for line in split[0]:
+			# Note: every message is one JSON object, so anything else, like the HTTP request a web page sends, ends
+			# the connection before a line of it is handled.
+			if not line.begins_with("{"):
+				_drop(peer)
+				break
 			_respond(peer, line)
+		if _buffers.has(peer) and (_buffers[peer] as PackedByteArray).size() > MAX_BUFFER:
+			_drop(peer)
+
+func _drop(peer: StreamPeerTCP) -> void:
+	peer.disconnect_from_host()
+	_peers.erase(peer)
+	_buffers.erase(peer)
 
 ## Captures answer after a few frames, every other event before this returns.
 func _respond(peer: StreamPeerTCP, line: String) -> void:
@@ -236,7 +256,8 @@ func _respond(peer: StreamPeerTCP, line: String) -> void:
 		peer.put_data((JSON.stringify(reply) + "\n").to_utf8_buffer())
 
 func handle_message(line: String) -> Dictionary:
-	var msg = JSON.parse_string(line)
+	var json := JSON.new()
+	var msg: Variant = json.data if json.parse(line) == OK else null
 	if not msg is Dictionary:
 		return { "ok": false, "error": "invalid json" }
 	var reply: Dictionary
