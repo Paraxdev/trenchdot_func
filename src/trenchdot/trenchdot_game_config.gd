@@ -35,6 +35,8 @@ static func _property_def(name: String, value: Variant, description: Variant) ->
 			default_override = description[1]
 	elif description != null:
 		desc = str(description)
+	if value is FuncGodotFGDProperty:
+		return _fgd_property_def(name, value, desc)
 	var def := { "name": name, "type": "string", "default": "", "description": desc }
 	match typeof(value):
 		TYPE_INT:
@@ -98,6 +100,48 @@ static func _property_def(name: String, value: Variant, description: Variant) ->
 		def["type"] = "target_source"
 	elif name in ["target", "killtarget", "parent"]:
 		def["type"] = "target_destination"
+	return def
+
+## The resource sets the type itself, so unlike plain values it is not inferred from names like target or parent.
+static func _fgd_property_def(name: String, prop: Variant, desc: String) -> Dictionary:
+	if prop.description != "":
+		desc = prop.description
+	var def := { "name": name, "type": "string", "default": "", "description": desc }
+	if prop is FuncGodotFGDPropertyChoices:
+		def["type"] = "choices"
+		var options: Array = []
+		for value in prop.choices:
+			options.append([prop.choices[value], str(value)])
+		def["options"] = options
+		def["default"] = str(prop.get_default_value())
+	elif prop is FuncGodotFGDPropertyFlags:
+		def["type"] = "flags"
+		var options: Array = []
+		var defaults: Array = []
+		for flag in prop.flags:
+			if not flag:
+				continue
+			var bit: int = 1 << flag.index
+			options.append([flag.name if flag.name != "" else "Flag %d" % flag.index, str(bit)])
+			if flag.enabled:
+				defaults.append(bit)
+		def["options"] = options
+		def["default_flags"] = defaults
+		def["default"] = str(prop.get_default_value())
+	elif prop is FuncGodotFGDPropertyColor:
+		def["type"] = "color"
+		var c: Color = prop.get_default_value()
+		# The editor and TrenchDotIO.to_color only read 0..1 when a part has a decimal point.
+		if prop.fgd_color_type == FuncGodotFGDPropertyColor.FGDColorType.COLOR1:
+			def["default"] = "%.3f %.3f %.3f" % [c.r, c.g, c.b]
+		else:
+			def["default"] = "%s %s %s" % [c.r8, c.g8, c.b8]
+	elif prop is FuncGodotFGDPropertyTarget:
+		var destination: bool = prop.fgd_target_type == FuncGodotFGDPropertyTarget.FGDTargetType.TARGET_DESTINATION
+		def["type"] = "target_destination" if destination else "target_source"
+		def["default"] = str(prop.get_default_value())
+	else:
+		return _property_def(name, prop.get_default_value(), desc)
 	return def
 
 ## An input or output entry: its argument names and, in [code]type[/code], one type name for each of them (bool, int,

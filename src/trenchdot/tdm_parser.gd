@@ -46,8 +46,8 @@ static func rotation_basis(angles: Vector3) -> Basis:
 ## Entity keys that name other entities and so get an instance's fixup, besides any property an entity definition
 ## declares as a target. Kept in step with FIXUP_KEYS in crates/td_doc/src/map.rs.
 const FIXUP_KEYS: Array[String] = ["targetname", "target", "destination", "call_target"]
-## Properties the game config exports as target_destination by their name unless the definition declares another type,
-## see TrenchDotGameConfig._property_def. The editor then fixes them up too.
+## Properties the game config exports as target_destination by their name unless the definition declares another type
+## or gives a FuncGodotFGDProperty, see TrenchDotGameConfig._property_def. The editor then fixes them up too.
 const INFERRED_TARGET_KEYS: Array[String] = ["target", "killtarget", "parent"]
 
 class Context:
@@ -455,7 +455,10 @@ static func _fixup_keys(ctx: Context, classname: String) -> Array[String]:
 			if str(declared[key]) in ["target_source", "target_destination"] and not key in keys:
 				keys.append(str(key))
 		for key in def.class_properties:
-			if str(key) in INFERRED_TARGET_KEYS and not declared.has(key) and not key in keys:
+			if declared.has(key) or key in keys:
+				continue
+			var value: Variant = def.class_properties[key]
+			if value is FuncGodotFGDPropertyTarget or (str(key) in INFERRED_TARGET_KEYS and not (value is FuncGodotFGDProperty)):
 				keys.append(str(key))
 	ctx.fixup_keys[classname] = keys
 	return keys

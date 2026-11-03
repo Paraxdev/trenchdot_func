@@ -52,6 +52,9 @@
 ## Optional array of node groups to add the generated node to.
 @export var node_groups : Array[String] = []
 
+## Attaches entity properties from the entity onto the output node's metadata as `"func_godot_properties"`
+@export var add_properties_to_metadata : bool = false
+
 func retrieve_all_class_properties(properties: Dictionary[String, Variant] = {}) -> Dictionary[String, Variant]:
 	for b in base_classes:
 		properties = b.retrieve_all_class_properties(properties)
