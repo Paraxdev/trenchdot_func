@@ -165,7 +165,7 @@ static func parse(text: String) -> Dictionary:
 					p[a] = to[a] if pick else from[a]
 				return xform * p
 			var arr := [[rect[0], rect[1]], [rect[2], rect[1]], [rect[0], rect[3]], [rect[2], rect[3]]]
-			var rot := int(face.get("rotation", 0))
+			var rot := int(face.get("rotation", 0)) % 360
 			while rot > 0:
 				var first = arr[0]
 				arr[0] = arr[2]
