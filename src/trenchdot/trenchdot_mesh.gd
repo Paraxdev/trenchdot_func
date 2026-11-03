@@ -4,6 +4,32 @@ class_name TrenchDotMesh extends RefCounted
 
 const _BrushData := FuncGodotData.BrushData
 const _FaceData := FuncGodotData.FaceData
+## Ear clipping work a face may take per corner and in all, counted in corners and grid rows looked at, the same as
+## td_geom::polygon::triangulate. Past either the rest of the face is fanned, so a face made to block its own ears
+## cannot stall an import. Ordinary faces of a few thousand corners stay well within it.
+const CLIP_WORK_PER_CORNER := 256
+const MAX_CLIP_WORK := 1 << 22
+## GDScript clips ears about a hundred times slower than the editor, so the faces of a whole build or model import
+## also share one [ClipBudget] of this much. Only a map made to stall a build runs out of it, and its later faces are
+## fanned.
+const BUILD_CLIP_WORK := 1 << 24
+
+## Ear clipping work left to a build, shared by the threads that convert its meshes. A face only looks at it before
+## it starts, so a build may run past it by one face's budget per thread.
+class ClipBudget extends RefCounted:
+	var _left := BUILD_CLIP_WORK
+	var _lock := Mutex.new()
+
+	func spent() -> bool:
+		_lock.lock()
+		var out := _left <= 0
+		_lock.unlock()
+		return out
+
+	func take(work: int) -> void:
+		_lock.lock()
+		_left -= work
+		_lock.unlock()
 
 static func _newell(points: PackedVector3Array) -> Vector3:
 	var n := Vector3.ZERO
@@ -19,9 +45,10 @@ static func _cross2(a: Vector2, b: Vector2, c: Vector2) -> float:
 	return (b - a).cross(c - a)
 
 ## Triangle corner indices of a polygon, counter-clockwise around [param normal]. Ear clipping, mirroring
-## td_geom::polygon::triangulate exactly (including its shorter-diagonal quad split) so the editor and the Godot
-## build triangulate the same face the same way.
-static func triangulate(points: PackedVector3Array, normal: Vector3) -> PackedInt32Array:
+## td_geom::polygon::triangulate exactly (including its shorter-diagonal quad split and its work budget) so the
+## editor and the Godot build triangulate the same face the same way. [param budget] is shared with the other faces
+## of a build, when it is spent the face is fanned right away.
+static func triangulate(points: PackedVector3Array, normal: Vector3, budget: ClipBudget = null) -> PackedInt32Array:
 	var n := points.size()
 	if n < 3:
 		return PackedInt32Array()
@@ -47,46 +74,146 @@ static func triangulate(points: PackedVector3Array, normal: Vector3) -> PackedIn
 				return PackedInt32Array([0, 1, 2, 0, 2, 3])
 			return PackedInt32Array([0, 1, 3, 1, 2, 3])
 
-	var idx: Array[int] = []
+	# The polygon left to clip as a ring of corners starting at head, so clipping an ear takes constant time.
+	var nxt := PackedInt32Array()
+	var prv := PackedInt32Array()
+	nxt.resize(n)
+	prv.resize(n)
 	for i in n:
-		idx.append(i)
+		nxt[i] = (i + 1) % n
+		prv[i] = (i + n - 1) % n
+	var head := 0
+	var m := n
+	# An ear of a simple polygon holds another corner only if it holds a reflex one, so only those are tested, found
+	# through a square grid over the corners that start out reflex. Corners that turn reflex later, which takes a face
+	# that crosses itself, are kept in late.
+	var reflex := PackedByteArray()
+	reflex.resize(n)
+	var items := PackedInt32Array()
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for j in n:
+		if _cross2(p2[prv[j]], p2[j], p2[nxt[j]]) <= 1e-12:
+			reflex[j] = 1
+			items.append(j)
+			lo = lo.min(p2[j])
+			hi = hi.max(p2[j])
+	var listed := reflex.duplicate()
+	var late := PackedInt32Array()
+	var side := maxi(int(sqrt(items.size())), 1)
+	var scale_x: float = side / (hi.x - lo.x) if hi.x > lo.x else 0.0
+	var scale_y: float = side / (hi.y - lo.y) if hi.y > lo.y else 0.0
+	var cells := PackedInt32Array()
+	for j in items:
+		cells.append(_cell((p2[j].y - lo.y) * scale_y, side) * side + _cell((p2[j].x - lo.x) * scale_x, side))
+	var starts := PackedInt32Array()
+	starts.resize(side * side + 1)
+	for cell in cells:
+		starts[cell + 1] += 1
+	for cell in side * side:
+		starts[cell + 1] += starts[cell]
+	var fill := starts.duplicate()
+	var sorted := PackedInt32Array()
+	sorted.resize(items.size())
+	for t in items.size():
+		sorted[fill[cells[t]]] = items[t]
+		fill[cells[t]] += 1
+	items = sorted
+
+	var limit := mini(n * CLIP_WORK_PER_CORNER, MAX_CLIP_WORK)
+	if budget and budget.spent():
+		limit = 0
+	var work := 0
 	var out := PackedInt32Array()
-	var guard := 0
-	while idx.size() > 3 and guard < n * n:
-		guard += 1
-		var m := idx.size()
+	while m > 3:
 		var clipped := false
-		for k in m:
-			var ia: int = idx[(k + m - 1) % m]
-			var ib: int = idx[k]
-			var ic: int = idx[(k + 1) % m]
+		var ib := head
+		for _step in m:
+			work += 1
+			if work > limit:
+				break
+			var ia := prv[ib]
+			var ic := nxt[ib]
+			var ear := Vector3i(ia, ib, ic)
 			var a := p2[ia]
 			var b := p2[ib]
 			var c := p2[ic]
-			if _cross2(a, b, c) <= 1e-12:
-				continue
-			var blocked := false
-			for j in idx:
-				if j != ia and j != ib and j != ic and p2[j] != a and p2[j] != b and p2[j] != c and _cross2(a, b, p2[j]) >= -1e-9 and _cross2(b, c, p2[j]) >= -1e-9 and _cross2(c, a, p2[j]) >= -1e-9:
-					blocked = true
-					break
+			var area := _cross2(a, b, c)
+			var blocked := area <= 1e-12
+			if not blocked:
+				var longest := maxf(maxf(a.distance_to(b), b.distance_to(c)), c.distance_to(a))
+				var shortest := minf(minf(a.distance_to(b), b.distance_to(c)), c.distance_to(a))
+				var margin := 4.0 * (1e-9 / shortest + 1e-6 * longest) * longest * longest / area
+				var x0 := _cell((minf(minf(a.x, b.x), c.x) - margin - lo.x) * scale_x, side)
+				var x1 := _cell((maxf(maxf(a.x, b.x), c.x) + margin - lo.x) * scale_x, side)
+				var y0 := _cell((minf(minf(a.y, b.y), c.y) - margin - lo.y) * scale_y, side)
+				var y1 := _cell((maxf(maxf(a.y, b.y), c.y) + margin - lo.y) * scale_y, side)
+				var narrow := margin <= longest and (x1 - x0 + 1) * (y1 - y0 + 1) <= items.size()
+				if not narrow:
+					var t := _blocker(p2, reflex, items, 0, items.size(), ear)
+					work += 1 + t + int(t < items.size())
+					blocked = t < items.size()
+				else:
+					for y in range(y0, y1 + 1):
+						var from := starts[y * side + x0]
+						var to := starts[y * side + x1 + 1]
+						var t := _blocker(p2, reflex, items, from, to, ear)
+						work += 1 + t - from + int(t < to)
+						if t < to:
+							blocked = true
+							break
+				if not blocked:
+					var t := _blocker(p2, reflex, late, 0, late.size(), ear)
+					work += 1 + t + int(t < late.size())
+					blocked = t < late.size()
 			if blocked:
+				ib = ic
 				continue
 			out.append_array([ia, ib, ic])
-			idx.remove_at(k)
+			nxt[ia] = ic
+			prv[ic] = ia
+			if ib == head:
+				head = ic
+			for j in [ia, ic]:
+				reflex[j] = 1 if _cross2(p2[prv[j]], p2[j], p2[nxt[j]]) <= 1e-12 else 0
+				if reflex[j] and not listed[j]:
+					listed[j] = 1
+					late.append(j)
 			clipped = true
 			break
 		if not clipped:
 			break
-	if idx.size() == 3:
-		out.append_array([idx[0], idx[1], idx[2]])
-	elif idx.size() > 3:
-		for k in range(1, idx.size() - 1):
-			out.append_array([idx[0], idx[k], idx[k + 1]])
+		m -= 1
+	var at := nxt[head]
+	for _k in range(2, m):
+		out.append_array([head, at, nxt[at]])
+		at = nxt[at]
+	if budget:
+		budget.take(work)
 	return out
 
+static func _cell(f: float, side: int) -> int:
+	if f >= side:
+		return side - 1
+	if f >= 0.0:
+		return int(f)
+	return 0
+
+## Where in [param list], from [param from] up to [param to], the first reflex corner lies that blocks the ear
+## [param ear] by sitting in it, [param to] when none does.
+static func _blocker(p2: PackedVector2Array, reflex: PackedByteArray, list: PackedInt32Array, from: int, to: int, ear: Vector3i) -> int:
+	var a := p2[ear.x]
+	var b := p2[ear.y]
+	var c := p2[ear.z]
+	for t in range(from, to):
+		var j := list[t]
+		if reflex[j] and j != ear.x and j != ear.y and j != ear.z and p2[j] != a and p2[j] != b and p2[j] != c and _cross2(a, b, p2[j]) >= -1e-9 and _cross2(b, c, p2[j]) >= -1e-9 and _cross2(c, a, p2[j]) >= -1e-9:
+			return t
+	return to
+
 ## Brush data for one mesh node. [param xform] places it (Godot space, map units), [param scale] converts to FuncGodot units.
-static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_texture: String) -> _BrushData:
+## [param budget] is the build's, see [method triangulate].
+static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_texture: String, budget: ClipBudget = null) -> _BrushData:
 	var raw_vertices: Array = node.get("vertices", [])
 	var raw_faces: Array = node.get("faces", [])
 	var decal := bool(node.get("decal", false))
@@ -190,7 +317,7 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 				if sum.length_squared() > 1e-12:
 					n = sum.normalized()
 			face.disp_normals.append(TrenchDotParser.to_id(n))
-		face.disp_indices = triangulate(pts, unit)
+		face.disp_indices = triangulate(pts, unit, budget)
 
 		var uvs: Array = face_info["uvs"]
 		if uvs.size() == pts.size():

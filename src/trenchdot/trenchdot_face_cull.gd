@@ -78,10 +78,11 @@ static func _segment_hits_triangle(a: Vector3, b: Vector3, t0: Vector3, t1: Vect
 	return u > EPS and v > EPS and u + v < 1.0 - EPS and tt > EPS and tt < 1.0 - EPS
 
 ## Whether [param solid]'s own surface triangles cut through [param entry]'s polygon anywhere, meaning part of
-## it lies outside a concave mesh even though every sampled corner tested inside. Mirrors crosses_surface.
-static func _crosses_surface(entry: Entry, solid: Solid) -> bool:
+## it lies outside a concave mesh even though every sampled corner tested inside. Mirrors crosses_surface. A mesh
+## face keeps the triangles it was built with, a brush face is clipped against [param budget].
+static func _crosses_surface(entry: Entry, solid: Solid, budget: TrenchDotMesh.ClipBudget) -> bool:
 	var poly := entry.points
-	var face_tris := TrenchDotMesh.triangulate(poly, entry.normal)
+	var face_tris := entry.face.disp_indices if entry.brush.is_mesh else TrenchDotMesh.triangulate(poly, entry.normal, budget)
 	var reach := entry.bounds.grow(COPLANAR_DIST)
 	var tris := solid.tris
 	var i := 0
@@ -107,7 +108,7 @@ static func _crosses_surface(entry: Entry, solid: Solid) -> bool:
 ## keeps a face resting on the solid's surface out of it, that one belongs to the coplanar pass. Brushes are
 ## convex, so their corners decide it. A closed mesh can be concave, there the face must also not cross its
 ## surface, so a face spanning an opening of the mesh is not wrongly counted as buried.
-static func _buried_in(solid: Solid, entry: Entry) -> bool:
+static func _buried_in(solid: Solid, entry: Entry, budget: TrenchDotMesh.ClipBudget) -> bool:
 	var nudge := entry.normal * COPLANAR_DIST
 	var centroid := Vector3.ZERO
 	for p in entry.points:
@@ -118,7 +119,7 @@ static func _buried_in(solid: Solid, entry: Entry) -> bool:
 	for p in samples:
 		if not solid.contains(p + nudge) or not solid.contains(p - nudge):
 			return false
-	if solid.is_mesh and _crosses_surface(entry, solid):
+	if solid.is_mesh and _crosses_surface(entry, solid, budget):
 		return false
 	return true
 
@@ -217,6 +218,7 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 	# Interior faces: a face buried inside another closed solid never shows, however the two intersect, so a
 	# pile of overlapping solids draws as one outer shell instead of every solid's whole surface.
 	var grid := _SolidGrid.new(solids)
+	var clip_budget := TrenchDotMesh.ClipBudget.new()
 	for entry: Entry in entries:
 		if entry.face.render_hidden or not entry.closed:
 			continue
@@ -224,7 +226,7 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 			var solid := solids[si]
 			if solid.brush == entry.brush or not solid.bounds.encloses(entry.bounds):
 				continue
-			if _buried_in(solid, entry):
+			if _buried_in(solid, entry, clip_budget):
 				entry.face.render_hidden = true
 				hidden += 1
 				break

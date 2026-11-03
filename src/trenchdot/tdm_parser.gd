@@ -160,12 +160,13 @@ static func _convert_geometry(ctx: Context) -> void:
 	var jobs := ctx.geometry
 	var results := []
 	results.resize(jobs.size())
+	var clip_budget := TrenchDotMesh.ClipBudget.new()
 	var convert := func(i: int) -> void:
 		var job: Dictionary = jobs[i]
 		var node: Dictionary = job["node"]
 		var brush: _BrushData
 		if node.get("type", "") == "mesh":
-			brush = TrenchDotMesh.parse(node, job["xform"], ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
+			brush = TrenchDotMesh.parse(node, job["xform"], ctx.map_settings.scale_factor, ctx.map_settings.origin_texture, clip_budget)
 		else:
 			brush = _parse_brush(ctx.map_settings, job["xform"], node, ctx.world_projected)
 		if brush:
@@ -180,6 +181,8 @@ static func _convert_geometry(ctx: Context) -> void:
 	else:
 		for i in jobs.size():
 			convert.call(i)
+	if clip_budget.spent():
+		push_warning("[TDM] %s has mesh faces with too many corners to triangulate in time, some were split into fans and may look wrong" % ctx.map_path)
 	var touched := {}
 	for i in jobs.size():
 		var entity: _EntityData = jobs[i]["entity"]

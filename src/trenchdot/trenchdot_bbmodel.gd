@@ -186,6 +186,7 @@ static func build_scene(model: Dictionary, scale: float = 1.0 / 16.0, collision:
 	var root := Node3D.new()
 	root.name = str(model.get("name", "model")).validate_node_name()
 	var by_texture := {}
+	var clip_budget := TrenchDotMesh.ClipBudget.new()
 	for poly in model.get("polygons", []):
 		var tex: int = poly["texture"]
 		if not by_texture.has(tex):
@@ -198,7 +199,7 @@ static func build_scene(model: Dictionary, scale: float = 1.0 / 16.0, collision:
 			s["verts"].append(positions[k] * scale)
 			s["normals"].append(normal)
 			s["uvs"].append(poly["uvs"][k])
-		var tris := TrenchDotMesh.triangulate(positions, normal)
+		var tris := TrenchDotMesh.triangulate(positions, normal, clip_budget)
 		for t in range(0, tris.size(), 3):
 			# Godot front faces are clockwise.
 			s["indices"].append_array([base + tris[t], base + tris[t + 2], base + tris[t + 1]])
