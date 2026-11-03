@@ -1,8 +1,9 @@
 class_name TrenchDotBuildReport extends RefCounted
 ## What one [FuncGodotMap] build made and what it could not find: the time of each step, entities per class, the
-## vertex count, missing entity definitions, models and materials, tool textures the map settings do not know, and
-## targets that match no node in the map. [method FuncGodotMap.build] returns it as [method to_dictionary] and keeps it
-## in [member FuncGodotMap.build_report]. The [code]Print Build Report[/code] build flag prints it.
+## vertex count, missing entity definitions, models and materials, tool textures the map settings do not know,
+## targets that match no node in the map, and logic_script entities that carry GDScript. [method FuncGodotMap.build]
+## returns it as [method to_dictionary] and keeps it in [member FuncGodotMap.build_report]. The
+## [code]Print Build Report[/code] build flag prints it.
 
 ## Tool texture names the TrenchDot editor uses unless the game config names them otherwise.
 const EDITOR_TOOL_TEXTURES := { "clip": "special/clip", "skip": "special/skip", "origin": "special/origin", "sky": "special/sky" }
@@ -28,6 +29,8 @@ var missing_materials: PackedStringArray = []
 var unknown_tool_textures: Dictionary = {}
 ## [code]{entity, target}[/code] for outputs and target properties no node of the map answers to.
 var unresolved_targets: Array[Dictionary] = []
+## Names of the logic_script entities whose source or expression holds code, which runs when the scene plays.
+var map_scripts: PackedStringArray = []
 
 var _start := 0
 var _step := ""
@@ -51,11 +54,14 @@ func finish() -> void:
 func time_ms() -> float:
 	return (Time.get_ticks_usec() - _start) / 1000.0 if steps.is_empty() else steps.reduce(func(sum, s): return sum + s["ms"], 0.0)
 
-## Counts entities per class and finds entities without a definition and model paths no resource answers to.
+## Counts entities per class and finds entities without a definition, model paths no resource answers to and
+## logic_script entities with code.
 func check_entities(data: Array[FuncGodotData.EntityData]) -> void:
 	for entity in data:
 		var classname := str(entity.properties.get("classname", ""))
 		entities[classname] = entities.get(classname, 0) + 1
+		if classname == "logic_script" and (str(entity.properties.get("source", "")).strip_edges() != "" or str(entity.properties.get("expression", "")).strip_edges() != ""):
+			map_scripts.append(_entity_name(entity))
 		if classname != "" and entity.definition and entity.definition.classname == "" and not classname in missing_classes:
 			missing_classes.append(classname)
 		var model := str(entity.properties.get("model", "")).strip_edges()
@@ -122,8 +128,11 @@ func count_vertices(map_node: Node) -> void:
 				vertices += mesh.surface_get_array_len(s)
 		stack.append_array(n.get_children())
 
-## One warning per missing model, material and tool texture, however many entities or faces share it.
+## One warning per missing model, material and tool texture, however many entities or faces share it, and one per
+## logic_script with code.
 func warn() -> void:
+	for script in map_scripts:
+		push_warning("[TrenchDot] logic_script %s runs GDScript stored in the map when the scene plays" % script)
 	for model in missing_models:
 		var users: Array = missing_models[model]
 		var more: String = " and %d more" % (users.size() - 1) if users.size() > 1 else ""
@@ -146,6 +155,7 @@ func to_dictionary() -> Dictionary:
 		"missing_materials": missing_materials,
 		"unknown_tool_textures": unknown_tool_textures,
 		"unresolved_targets": unresolved_targets,
+		"map_scripts": map_scripts,
 	}
 
 func print_report() -> void:
@@ -170,6 +180,8 @@ func print_report() -> void:
 		print("  tool texture %s is not the map settings' %s" % [texture, unknown_tool_textures[texture]])
 	for t in unresolved_targets:
 		print("  %s targets '%s', which matches nothing in this map" % [t["entity"], t["target"]])
+	if not map_scripts.is_empty():
+		print("  logic_script entities with GDScript: ", ", ".join(map_scripts))
 
 static func _resolves(target: String, names: Dictionary) -> bool:
 	if target == "" or target.begins_with("!") or target.begins_with("@") or target.begins_with("/") or target.begins_with("%"):
