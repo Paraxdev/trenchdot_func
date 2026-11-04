@@ -7,10 +7,14 @@ class_name TrenchDotFGDFile extends FuncGodotFGDFile
 ## [member pack_fgd_path], where the project owns them. This file reads them from there, so every FGD that has it as a
 ## base, like the addon's defaults and the demo's, gets the pack without listing it. When two definitions share a
 ## classname the later one wins: the core, then the pack, then the entities of an FGD that has this one as its base.
+## A pack installed before the rename, in [constant TrenchDotLegacy.PACK_DIR], comes before the new one, so projects
+## that still carry it keep its definitions.
 
 ## Where an installed entity pack keeps its FGD file. Nothing is added when there is no file there.
 @export_file("*.tres") var pack_fgd_path := "res://trenchdot/entities/gameplay_fgd.tres"
 
+## Where an older pack keeps its FGD file, see [method legacy_pack_fgd].
+var legacy_pack_path := TrenchDotLegacy.PACK_FGD
 ## Set while [method pack_fgd] leaves the pack out because Godot's filesystem does not list it yet.
 var waiting_for_scan := false
 var _merging := false
@@ -18,6 +22,7 @@ var _merging := false
 var _pack: FuncGodotFGDFile
 var _pack_path := ""
 var _pack_version := -1
+var _legacy_pack: FuncGodotFGDFile
 
 ## Makes every TrenchDotFGDFile look for its pack again, the editor integration calls it when project files change.
 static func files_changed() -> void:
@@ -44,6 +49,14 @@ func pack_fgd() -> FuncGodotFGDFile:
 	if _pack and Engine.is_editor_hint():
 		_reload_broken_scripts(_pack)
 	return _pack
+
+## The FGD of a pack installed before the rename, null when the project has none.
+func legacy_pack_fgd() -> FuncGodotFGDFile:
+	if _merging or not ResourceLoader.exists(legacy_pack_path):
+		return null
+	if not _legacy_pack or _legacy_pack.resource_path != legacy_pack_path:
+		_legacy_pack = load(legacy_pack_path) as FuncGodotFGDFile
+	return _legacy_pack
 
 ## Compiles the pack's entity scripts again that failed to, like those of an older pack that Godot loaded before it
 ## registered the classes they use. Godot keeps such a script broken until a restart otherwise.
@@ -72,12 +85,12 @@ static func _listed(path: String) -> bool:
 
 func get_entity_definitions() -> Dictionary[String, FuncGodotFGDEntityClass]:
 	var res := super()
-	var pack := pack_fgd()
-	if pack:
-		# A pack FGD that lists this file as a base would come back here.
-		_merging = true
-		var defs := pack.get_entity_definitions()
-		_merging = false
-		for key in defs:
-			res[key] = defs[key]
+	for pack in [legacy_pack_fgd(), pack_fgd()]:
+		if pack:
+			# A pack FGD that lists this file as a base would come back here.
+			_merging = true
+			var defs: Dictionary = pack.get_entity_definitions()
+			_merging = false
+			for key in defs:
+				res[key] = defs[key]
 	return res

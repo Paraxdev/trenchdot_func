@@ -240,6 +240,7 @@ static func definition_sources(fgd: FuncGodotFGDFile, out: Dictionary = {}, visi
 		list.erase(where)
 		list.append(where)
 	if fgd is TrenchDotFGDFile:
+		definition_sources(fgd.legacy_pack_fgd(), out, visiting)
 		definition_sources(fgd.pack_fgd(), out, visiting)
 	visiting.erase(fgd)
 	return out

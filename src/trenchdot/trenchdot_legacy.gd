@@ -4,8 +4,11 @@ class_name TrenchDotLegacy extends RefCounted
 const MAP_EXTENSION := "gtm"
 const MAP_FORMAT := "godottrench-map"
 const MAP_IMPORTER := "godottrench.gtm"
+## Where the Gameplay entities pack was installed.
+const PACK_DIR := "res://godottrench/entities"
 ## The game config the editor read before trenchdot_game.json.
 const GAME_FILE := "res://godottrench_game.json"
+const PACK_FGD := PACK_DIR + "/gameplay_fgd.tres"
 const _SETTINGS_ROOT := "godottrench/"
 const _DEFAULT_CONFIG := "res://addons/func_godot/game_config/godottrench/godottrench_game_config.tres"
 const _NEW_DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
