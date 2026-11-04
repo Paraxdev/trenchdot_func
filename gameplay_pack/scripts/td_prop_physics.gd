@@ -46,9 +46,9 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 
 func _ready() -> void:
 	_hp = health
+	_build_body()
 	if Engine.is_editor_hint():
 		return
-	_build_body()
 	if impact_speed > 0.0:
 		contact_monitor = true
 		max_contacts_reported = 4
@@ -59,12 +59,12 @@ func _build_body() -> void:
 	var box := BoxShape3D.new()
 	box.size = full
 	shape.shape = box
-	add_child(shape)
+	_add(shape)
 	var path := TrenchDotBuild.map_resource_path(model, TrenchDotBuild.MODEL_FILES)
 	if path != "" and ResourceLoader.exists(path):
 		var packed := load(path) as PackedScene
 		if packed:
-			add_child(packed.instantiate())
+			_add(packed.instantiate())
 			return
 	elif path != "" and not TrenchDotProp.quiet_missing and not _warned_models.has(model):
 		_warned_models[model] = true
@@ -73,7 +73,12 @@ func _build_body() -> void:
 	var box_mesh := BoxMesh.new()
 	box_mesh.size = full
 	mesh.mesh = box_mesh
-	add_child(mesh)
+	_add(mesh)
+
+## In the editor the body is only a preview, built again whenever the scene loads. Internal children are left out of
+## get_children(), so builds never give them an owner and the scene is saved without them.
+func _add(node: Node) -> void:
+	add_child(node, false, INTERNAL_MODE_BACK if Engine.is_editor_hint() else INTERNAL_MODE_DISABLED)
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if _broken or impact_speed <= 0.0:
