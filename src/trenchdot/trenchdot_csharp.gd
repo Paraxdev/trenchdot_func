@@ -191,7 +191,7 @@ static func _io_type(cs: String) -> String:
 ## Entity descriptions found in one C# source text.
 static func parse_source(text: String, path: String = "") -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	var class_rx := RegEx.create_from_string("\\[TrenchDotEntity\\(([^\\]]*)\\)\\][\\s\\S]*?class\\s+(\\w+)\\s*:\\s*([\\w.]+)")
+	var class_rx := RegEx.create_from_string("\\[(?:TrenchDot|%s)Entity\\(([^\\]]*)\\)\\][\\s\\S]*?class\\s+(\\w+)\\s*:\\s*([\\w.]+)" % TrenchDotLegacy.CSHARP_PREFIX)
 	var matches := class_rx.search_all(text)
 	for i in matches.size():
 		var m := matches[i]
@@ -228,7 +228,7 @@ static func parse_source(text: String, path: String = "") -> Array[Dictionary]:
 				"default": _cs_default(e.get_string(3), type),
 				"description": "",
 			})
-		var marked := RegEx.create_from_string("\\[TrenchDotInput[^\\]]*\\]\\s*public\\s+[\\w<>.]+\\s+(\\w+)\\s*\\(([^)]*)\\)").search_all(body)
+		var marked := RegEx.create_from_string("\\[(?:TrenchDot|%s)Input[^\\]]*\\]\\s*public\\s+[\\w<>.]+\\s+(\\w+)\\s*\\(([^)]*)\\)" % TrenchDotLegacy.CSHARP_PREFIX).search_all(body)
 		var methods := marked if not marked.is_empty() else RegEx.create_from_string("public\\s+void\\s+([A-Z]\\w*)\\s*\\(([^)]*)\\)").search_all(body)
 		for meth in methods:
 			entry["inputs"].append(_io(meth.get_string(1), meth.get_string(2)))
@@ -273,7 +273,7 @@ static func scan(dirs: PackedStringArray = source_dirs()) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	for f in files:
 		var text := FileAccess.get_file_as_string(f)
-		if text.contains("TrenchDotEntity"):
+		if text.contains("TrenchDotEntity") or text.contains(TrenchDotLegacy.CSHARP_PREFIX + "Entity"):
 			entries.append_array(parse_source(text, f))
 	_cache = { "entries": entries }
 	_cache_key = key

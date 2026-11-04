@@ -25,6 +25,8 @@ const METAS := {
 	&"gt_prop_generated": &"td_prop_generated",
 	&"godottrench_baked": &"trenchdot_baked",
 }
+## Attribute prefix of C# entity classes, GodotTrenchEntity and GodotTrenchInput.
+const CSHARP_PREFIX := "GodotTrench"
 const _SETTINGS_ROOT := "godottrench/"
 const _DEFAULT_CONFIG := "res://addons/func_godot/game_config/godottrench/godottrench_game_config.tres"
 const _NEW_DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
