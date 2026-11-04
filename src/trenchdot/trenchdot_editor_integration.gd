@@ -9,7 +9,8 @@ class_name TrenchDotEditorIntegration extends Node
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds of the edited scene, naming the
 ## background scene tabs that use the map too, which build a missed save when shown, and what the builds could not
 ## find, see [method build_summary]), [code]focus[/code], [code]export_game_config[/code], [code]scan[/code] (see
-## [method scan]), and for live mode [code]live_begin {path, text, content}[/code],
+## [method scan]), [code]play[/code] (see [method play]), and for live mode
+## [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
 ## (see [TrenchDotLiveSession], the replies to the first three name the classes built without a definition and the
 ## map settings, see [method with_unresolved]), [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
@@ -324,6 +325,8 @@ func _handle(msg: Dictionary) -> Dictionary:
 			return { "ok": true }
 		"scan":
 			return scan()
+		"play":
+			return play()
 		"inspect":
 			return inspect(path, msg.get("ids", []))
 		"live_begin", "live_resync":
@@ -360,6 +363,20 @@ func scan() -> Dictionary:
 	_scan_requested = true
 	_scans += 1
 	return { "ok": true, "scan": _scans }
+
+## Saves the open scenes and runs the project's main scene, as Play does in Godot, so the game starts from the scenes
+## Godot shows, with live edits and builds that were not saved yet.
+func play() -> Dictionary:
+	var main := str(ProjectSettings.get_setting("application/run/main_scene", ""))
+	if main == "":
+		return { "ok": false, "error": "the project has no main scene, set one in Godot's Project Settings under Application > Run" }
+	if not ResourceLoader.exists(main):
+		return { "ok": false, "error": "the project's main scene %s does not exist" % main }
+	if not Engine.is_editor_hint():
+		return { "ok": false, "error": "only the Godot editor plays the project" }
+	EditorInterface.save_all_scenes()
+	EditorInterface.play_main_scene()
+	return { "ok": true }
 
 func _local_path(path: String) -> String:
 	var local := ProjectSettings.localize_path(path)
