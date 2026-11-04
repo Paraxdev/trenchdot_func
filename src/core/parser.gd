@@ -92,6 +92,10 @@ func post_process(parse_data: _ParseData, map_settings: FuncGodotMapSettings) ->
 		# geo generation and entity assembly.
 		if "classname" in entity.properties:
 			var classname: String = entity.properties["classname"]
+			var alias := TrenchDotLegacy.classname_alias(classname, entity_defs)
+			if alias != classname:
+				classname = alias
+				entity.properties["classname"] = alias
 			if classname in entity_defs:
 				entity.definition = entity_defs[classname]
 				if not entity.definition is FuncGodotFGDSolidClass and not entity.definition is FuncGodotFGDPointClass:
