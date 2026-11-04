@@ -8,8 +8,8 @@ class_name TrenchDotEditorIntegration extends Node
 ## [code]status[/code] (project, Godot version, pid, the edited scene and its maps with their build epoch),
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds of the edited scene, naming the
 ## background scene tabs that use the map too, which build a missed save when shown, and what the builds could not
-## find, see [method build_summary]), [code]focus[/code],
-## [code]export_game_config[/code], and for live mode [code]live_begin {path, text, content}[/code],
+## find, see [method build_summary]), [code]focus[/code], [code]export_game_config[/code], [code]scan[/code] (see
+## [method scan]), and for live mode [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
 ## (see [TrenchDotLiveSession], the replies to the first three name the classes built without a definition and the
 ## map settings, see [method with_unresolved]), [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
@@ -50,6 +50,11 @@ var _waiting: Dictionary = {}
 var _shown_root_id := 0
 ## The last warning about the port setting. settings_changed fires for every setting, so a bad port is only reported once.
 var _port_problem := ""
+## Set from a scan event until that scan is done.
+var _scan_requested := false
+## Counts the scan events, and the last one whose scan is done.
+var _scans := 0
+var _scans_done := 0
 
 static func ensure_setting(name: String, value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "") -> void:
 	if not ProjectSettings.has_setting(name):
@@ -224,6 +229,10 @@ func _process(_delta: float) -> void:
 		if id != _shown_root_id:
 			_shown_root_id = id
 			build_waiting()
+		if _scan_requested and not EditorInterface.get_resource_filesystem().is_scanning():
+			_scan_requested = false
+			_scans_done = _scans
+			check_definitions()
 	if not _server and _port > 0 and Time.get_ticks_msec() >= _next_listen:
 		_listen(false)
 	if not _server:
@@ -313,6 +322,8 @@ func _handle(msg: Dictionary) -> Dictionary:
 		"export_game_config":
 			export_game_config()
 			return { "ok": true }
+		"scan":
+			return scan()
 		"inspect":
 			return inspect(path, msg.get("ids", []))
 		"live_begin", "live_resync":
@@ -336,6 +347,19 @@ func _handle(msg: Dictionary) -> Dictionary:
 				rebuild_maps(path)
 			return { "ok": true }
 	return { "ok": false, "error": "unknown event" }
+
+## Starts a scan of the project files, for files the TrenchDot editor wrote, like an installed entity pack. Once it is
+## done every live session checks its definitions, see [method check_definitions]. The reply numbers the scan, and
+## [code]scanned[/code] in the status names the last one done.
+func scan() -> Dictionary:
+	if not Engine.is_editor_hint():
+		return { "ok": false, "error": "only the Godot editor scans the project files" }
+	# Note: unlike scan(), scan_sources() also reloads loaded resources whose files changed, as the window gaining focus
+	# does, so an FGD edited outside Godot is read again.
+	EditorInterface.get_resource_filesystem().scan_sources()
+	_scan_requested = true
+	_scans += 1
+	return { "ok": true, "scan": _scans }
 
 func _local_path(path: String) -> String:
 	var local := ProjectSettings.localize_path(path)
@@ -389,7 +413,7 @@ func status() -> Dictionary:
 		maps.append({ "path": files[key], "epoch": _epochs.get(key, 0) })
 	return {
 		"ok": true, "project": ProjectSettings.globalize_path("res://"), "godot": Engine.get_version_info()["string"],
-		"pid": OS.get_process_id(), "maps": maps, "scene": scene_name(EditorInterface.get_edited_scene_root()),
+		"pid": OS.get_process_id(), "maps": maps, "scene": scene_name(EditorInterface.get_edited_scene_root()), "scanned": _scans_done,
 	}
 
 ## The file of the scene under [param root], or its root name while it is unsaved. Empty without a scene.
