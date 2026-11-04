@@ -168,6 +168,16 @@ func _report(report: TrenchDotBuildReport) -> Dictionary:
 		report.print_report()
 	return build_report
 
+## The steps that follow the assembly of [param entities], shared by full builds and the entities a live session
+## rebuilds: the report's entity and target checks, probe volumes and, once the scene has baked lighting, light bake
+## modes.
+func finish_entities(entities: Array[FuncGodotData.EntityData], report: TrenchDotBuildReport) -> void:
+	report.check_entities(entities)
+	report.check_targets(entities, self)
+	TrenchDotProbes.fit_volumes(entities)
+	if get_node_or_null(TrenchDotLightmap.NODE_NAME) is LightmapGI:
+		TrenchDotLightmap.set_bake_modes(entities)
+
 func _build(text: String) -> TrenchDotBuildReport:
 	var time_elapsed: float = Time.get_ticks_msec()
 	var report := TrenchDotBuildReport.new(global_map_file if global_map_file != "" else local_map_file)
@@ -251,11 +261,8 @@ func _build(text: String) -> TrenchDotBuildReport:
 	TrenchDotProp.quiet_missing = true
 	assembler.build(self, entities, groups)
 	TrenchDotProp.quiet_missing = false
-	report.check_entities(entities)
 	report.definition_problems.assign(assembler.problems.values())
-	report.check_targets(entities, self)
-
-	TrenchDotProbes.fit_volumes(entities)
+	finish_entities(entities, report)
 	# Lets a live session tell whether the scene still matches the map and the definitions it was built from.
 	if text != "" or Engine.is_editor_hint():
 		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))

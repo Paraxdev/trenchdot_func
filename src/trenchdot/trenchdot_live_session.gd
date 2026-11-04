@@ -464,13 +464,19 @@ func _replace_entity(map: FuncGodotMap, old: Node, data: FuncGodotData.EntityDat
 	var old_name := String(old.name) if old else ""
 	_free(old)
 	var owner := TrenchDotBuild.scene_owner(map)
+	TrenchDotProp.quiet_missing = true
 	var attached := assembler.attach_entity(fresh, data, parent, owner)
+	TrenchDotProp.quiet_missing = false
 	if not attached:
 		return null
 	if unnamed and old_name != "":
 		attached.name = old_name
 	TrenchDotIO.setup(list, owner)
 	TrenchDotIO.invalidate(map)
+	var report := TrenchDotBuildReport.new(path)
+	report.use_settings(map.get_map_settings())
+	map.finish_entities(list, report)
+	report.warn()
 	return attached
 
 func _rebuild_entity(map: FuncGodotMap, id: int, old: Node) -> void:

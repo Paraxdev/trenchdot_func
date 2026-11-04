@@ -207,9 +207,7 @@ static func build(map_node: Node3D, lightmap: Dictionary, entities: Array) -> Li
 	gi.light_data = data
 
 	var sun_mode := LightmapGIData.SHADOWMASK_MODE_NONE
-	for entity in entities:
-		if entity.node is Light3D:
-			entity.node.light_bake_mode = bake_mode(entity.properties, "bake_mode")
+	set_bake_modes(entities)
 	if not entities.is_empty():
 		var sun := map_node.get_node_or_null("sun") as DirectionalLight3D
 		if sun:
@@ -218,6 +216,12 @@ static func build(map_node: Node3D, lightmap: Dictionary, entities: Array) -> Li
 				sun_mode = LightmapGIData.SHADOWMASK_MODE_REPLACE
 	gi.shadowmask_mode = sun_mode
 	return gi
+
+## Gives the lights among [param entities] the bake mode their bake_mode key asks for.
+static func set_bake_modes(entities: Array) -> void:
+	for entity in entities:
+		if entity.node is Light3D:
+			entity.node.light_bake_mode = bake_mode(entity.properties, "bake_mode")
 
 ## Godot's bake mode for a light with [param properties], BakeMode::resolve in crates/td_editor/src/bake/collect.rs.
 ## Auto bakes a light unless I/O can switch it, which a baked light cannot follow.
