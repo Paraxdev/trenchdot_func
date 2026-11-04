@@ -12,10 +12,12 @@ class_name FuncGodotFGDPointClass extends FuncGodotFGDEntityClass
 ## @tutorial(dumptruck_ds' Quake Mapping Entities Tutorial): https://www.youtube.com/watch?v=gtL9f6_N2WM
 ## @tutorial(Valve Developer Wiki FGD Article: Entity Description Section): https://developer.valvesoftware.com/wiki/FGD#Entity_Description
 
-## An optional [PackedScene] file to instantiate on map build. Overrides [member FuncGodotFGDEntityClass.node_class] and [member script_class].
+## An optional [PackedScene] file to instantiate on map build. Overrides [member FuncGodotFGDEntityClass.node_class].
+## A [member script_class] replaces the script of the scene's root node.
 @export var scene_file: PackedScene
 
-## An optional [Script] resource to attach to the node generated on map build. Ignored if [member scene_file] is specified.
+## An optional [Script] resource to attach to the node generated on map build. With a [member scene_file] it replaces
+## the script of the scene's root node, leave it empty to keep that one.
 @export var script_class: Script
 
 ## Toggles whether entity will use `angles`, `mangle`, or `angle` to determine rotations on [FuncGodotMap] build, prioritizing the key value pairs in that order. 
