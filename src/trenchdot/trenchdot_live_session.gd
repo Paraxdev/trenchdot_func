@@ -52,8 +52,9 @@ func _init(map_path: String, map_nodes: Array[FuncGodotMap]) -> void:
 	path = map_path
 	maps = map_nodes
 
-## Takes the whole map. Maps whose scene was built from other content are built from it right away. [param content] is
-## the content id the editor computed for the map, matching the one a scene built from the saved binary file keeps.
+## Takes the whole map. Maps whose scene was built from other content or with other entity definitions are built from
+## it right away. [param content] is the content id the editor computed for the map, matching the one a scene built
+## from the saved binary file keeps.
 func begin(text: String, content: Variant = null) -> bool:
 	var json = JSON.parse_string(text)
 	if not json is Dictionary or json.get("format", "") != TrenchDotParser.FORMAT_NAME:
@@ -64,7 +65,8 @@ func begin(text: String, content: Variant = null) -> bool:
 	var text_hash := text.hash()
 	for map in _live_maps():
 		var built := int(map.get_meta(TrenchDotBuild.SOURCE_HASH_META, 0))
-		if built != text_hash and (content == null or built != int(content)):
+		var same_map := built == text_hash or (content != null and built == int(content))
+		if not same_map or not TrenchDotBuild.built_with_current_definitions(map):
 			_full_build(map, text)
 	return true
 

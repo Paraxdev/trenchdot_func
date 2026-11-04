@@ -8,6 +8,8 @@ const GROUP_META := &"_td_group"
 ## What the node was last fully built from: the hash of the map text for a build from text or a JSON file, the END
 ## chunk content id for a binary file, see [method TrenchDotTdmFile.content_id].
 const SOURCE_HASH_META := &"_td_source_hash"
+## The entity definitions the node was last fully built with, see [method definitions_id].
+const DEFINITIONS_META := &"_td_definitions"
 ## Project setting: build steps that only compute data run on the WorkerThreadPool.
 const SETTING_THREADED := "trenchdot/threaded_build"
 
@@ -94,3 +96,53 @@ static func groups_by_id(map_node: Node) -> Dictionary:
 		if n == map_node or n.has_meta(GROUP_META):
 			stack.append_array(n.get_children())
 	return out
+
+## The entity definitions a build with [param settings] uses by classname: those of the Entity Fgd, then the C# ones it
+## does not define, see [TrenchDotCSharp].
+static func definitions(settings: FuncGodotMapSettings) -> Dictionary:
+	var out := {}
+	if not settings or not settings.entity_fgd:
+		return out
+	out.merge(settings.entity_fgd.get_entity_definitions())
+	out.merge(TrenchDotCSharp.definitions())
+	return out
+
+## Identifies what the entity definitions of [param settings] build: every stored value of every definition, with
+## resources by path, scripts by path, base class and whether they can be instantiated, and each Node Class by whether
+## Godot or a script class knows it. A definition whose script or class only became usable later counts as another.
+static func definitions_id(settings: FuncGodotMapSettings) -> int:
+	var defs := definitions(settings)
+	if defs.is_empty():
+		return 0
+	var global_classes := {}
+	for c in ProjectSettings.get_global_class_list():
+		global_classes[str(c["class"])] = true
+	var names := defs.keys()
+	names.sort()
+	var parts := PackedStringArray()
+	for classname in names:
+		var def: Resource = defs[classname]
+		parts.append(classname)
+		for p in def.get_property_list():
+			if p["usage"] & PROPERTY_USAGE_STORAGE:
+				parts.append("%s=%s" % [p["name"], _stable(def.get(p["name"]))])
+		var node_class := str(def.get(&"node_class"))
+		parts.append("known=%s" % (node_class != "" and (ClassDB.class_exists(node_class) or global_classes.has(node_class) or ResourceLoader.exists(node_class, "Script"))))
+	return "\n".join(parts).hash()
+
+static func _stable(value: Variant) -> String:
+	if value is Script:
+		return "%s:%s:%s" % [value.resource_path, value.get_instance_base_type(), value.can_instantiate()]
+	if value is Resource:
+		return value.resource_path
+	if value is Object:
+		return value.get_class()
+	if value is Array:
+		return "[%s]" % ",".join(value.map(_stable))
+	if value is Dictionary:
+		return "{%s}" % ",".join(value.keys().map(func(k): return "%s:%s" % [k, _stable(value[k])]))
+	return var_to_str(value)
+
+## Whether [param map] was last fully built with the entity definitions its map settings hold now.
+static func built_with_current_definitions(map: FuncGodotMap) -> bool:
+	return int(map.get_meta(DEFINITIONS_META, 0)) == definitions_id(map.get_map_settings())

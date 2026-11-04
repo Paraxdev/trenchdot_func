@@ -22,6 +22,12 @@ const SKIP_DIRS := [".godot", ".import", "addons", "bin", "obj"]
 
 static var _cache: Dictionary = {}
 static var _cache_key := ""
+## Set by the editor integration, which calls [method files_changed] whenever Godot sees project files change. The
+## source files found are then kept and only their modified times are read again, since walking every folder of a big
+## project takes longer than reading its few entity sources.
+static var keep_file_list := false
+static var _files: PackedStringArray = []
+static var _files_dirs: PackedStringArray = []
 
 static func source_dirs() -> PackedStringArray:
 	if ProjectSettings.has_setting(SETTING):
@@ -258,9 +264,7 @@ static func class_io(class_name_text: String, dirs: PackedStringArray = source_d
 
 ## Every [TrenchDotEntity] class under [param dirs], cached until a source file changes.
 static func scan(dirs: PackedStringArray = source_dirs()) -> Array[Dictionary]:
-	var files: PackedStringArray = []
-	for d in dirs:
-		_collect_files(d, files)
+	var files := _source_files(dirs)
 	var key := ""
 	for f in files:
 		key += "%s:%d;" % [f, FileAccess.get_modified_time(f)]
@@ -274,6 +278,26 @@ static func scan(dirs: PackedStringArray = source_dirs()) -> Array[Dictionary]:
 	_cache = { "entries": entries }
 	_cache_key = key
 	return entries
+
+## Makes the next [method scan] look for source files again.
+static func files_changed() -> void:
+	_files_dirs = []
+
+static func _source_files(dirs: PackedStringArray) -> PackedStringArray:
+	if keep_file_list and not dirs.is_empty() and dirs == _files_dirs and _all_exist(_files):
+		return _files
+	var files: PackedStringArray = []
+	for d in dirs:
+		_collect_files(d, files)
+	_files = files
+	_files_dirs = dirs.duplicate()
+	return files
+
+static func _all_exist(files: PackedStringArray) -> bool:
+	for f in files:
+		if not FileAccess.file_exists(f):
+			return false
+	return true
 
 ## FuncGodot definitions for C# entities, merged into the map's FGD definitions at build time.
 static func definitions(dirs: PackedStringArray = source_dirs()) -> Dictionary:

@@ -114,8 +114,9 @@ func clear_children() -> void:
 			continue
 		remove_child(child)
 		child.queue_free()
-	if has_meta(TrenchDotIO.CACHE_META):
-		remove_meta(TrenchDotIO.CACHE_META)
+	for meta in [TrenchDotIO.CACHE_META, TrenchDotBuild.SOURCE_HASH_META, TrenchDotBuild.DEFINITIONS_META]:
+		if has_meta(meta):
+			remove_meta(meta)
 	if Engine.is_editor_hint():
 		Engine.get_singleton(&"EditorInterface").mark_scene_as_unsaved()
 
@@ -211,9 +212,6 @@ func _build(text: String) -> TrenchDotBuildReport:
 		parse_data = parser.parse_tdm(text, settings, _map_file_internal)
 	else:
 		parse_data = parser.parse_map_data(_map_file_internal, settings)
-	# Lets a live session tell whether the scene still matches the map it was built from.
-	if text != "" or Engine.is_editor_hint():
-		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))
 	
 	if parse_data.entities.is_empty():
 		report.error = "the map could not be read"
@@ -258,6 +256,10 @@ func _build(text: String) -> TrenchDotBuildReport:
 	report.check_targets(entities, self)
 
 	TrenchDotProbes.fit_volumes(entities)
+	# Lets a live session tell whether the scene still matches the map and the definitions it was built from.
+	if text != "" or Engine.is_editor_hint():
+		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))
+		set_meta(TrenchDotBuild.DEFINITIONS_META, TrenchDotBuild.definitions_id(settings))
 
 	report.step("Building terrains")
 	TrenchDotTerrain.build_all(self, parse_data.terrains, settings)
