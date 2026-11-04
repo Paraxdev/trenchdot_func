@@ -3,6 +3,7 @@
 class_name FuncGodotPlugin extends EditorPlugin
 
 var map_import_plugin: TrenchDotTdmImportPlugin = null
+var legacy_import_plugin: TrenchDotLegacyImportPlugin = null
 
 #var func_godot_map_progress_bar: Control = null
 var edited_object_ref: WeakRef = weakref(null)
@@ -25,6 +26,8 @@ func _edit(object: Object) -> void:
 func _enter_tree() -> void:
 	map_import_plugin = TrenchDotTdmImportPlugin.new()
 	add_import_plugin(map_import_plugin)
+	legacy_import_plugin = TrenchDotLegacyImportPlugin.new()
+	add_import_plugin(legacy_import_plugin)
 	bbmodel_import_plugin = TrenchDotBBModelImportPlugin.new()
 	add_import_plugin(bbmodel_import_plugin)
 
@@ -76,6 +79,8 @@ func _exit_tree() -> void:
 	remove_custom_type("FuncGodotMap")
 	remove_import_plugin(map_import_plugin)
 	map_import_plugin = null
+	remove_import_plugin(legacy_import_plugin)
+	legacy_import_plugin = null
 	if bbmodel_import_plugin:
 		remove_import_plugin(bbmodel_import_plugin)
 		bbmodel_import_plugin = null

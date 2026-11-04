@@ -39,10 +39,10 @@ signal warmed_up
 
 @export_category("Map")
 ## Local path to the .tdm map to build a scene from.
-@export_file("*.tdm") var local_map_file: String = ""
+@export_file("*.tdm", "*.gtm") var local_map_file: String = ""
 
 ## Global path to the .tdm map to build a scene from. Overrides [member FuncGodotMap.local_map_file].
-@export_global_file("*.tdm") var global_map_file: String = ""
+@export_global_file("*.tdm", "*.gtm") var global_map_file: String = ""
 
 ## Rebuild automatically when the TrenchDot editor reports that this map was saved (live link).
 @export var auto_rebuild_on_save: bool = true
@@ -137,7 +137,7 @@ func verify() -> Error:
 			return ERR_DOES_NOT_EXIST
 		_map_file_internal = ResourceUID.get_id_path(uid)
 
-	if _map_file_internal.get_extension().to_lower() != "tdm":
+	if not _map_file_internal.get_extension().to_lower() in TrenchDotBuild.MAP_FILES:
 		fail_build("%s is not a .tdm map." % _map_file_internal)
 		return ERR_FILE_UNRECOGNIZED
 

@@ -56,7 +56,7 @@ static func _classnames_in(map: Variant, out: Dictionary) -> void:
 
 static func _maps(dir: String, out: PackedStringArray) -> PackedStringArray:
 	for f in DirAccess.get_files_at(dir):
-		if f.get_extension().to_lower() == "tdm":
+		if f.get_extension().to_lower() in TrenchDotBuild.MAP_FILES:
 			out.append(dir.path_join(f))
 	for d in DirAccess.get_directories_at(dir):
 		var sub := dir.path_join(d)

@@ -26,7 +26,7 @@ static func read(path: String) -> Dictionary:
 	if FileAccess.file_exists(path):
 		return decode(FileAccess.get_file_as_bytes(path))
 	# Note: loading runs any script a resource embeds. Only an exported game loads, it holds nothing but its own files.
-	if OS.has_feature("template") and path.begins_with("res://") and path.get_extension().to_lower() == "tdm" and ResourceLoader.exists(path):
+	if OS.has_feature("template") and path.begins_with("res://") and path.get_extension().to_lower() in TrenchDotBuild.MAP_FILES and ResourceLoader.exists(path):
 		var imported: Resource = load(path)
 		if imported is TrenchDotImportedMap:
 			return decode(imported.map_bytes)

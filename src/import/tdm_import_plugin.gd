@@ -1,6 +1,7 @@
 @tool
 class_name TrenchDotTdmImportPlugin extends EditorImportPlugin
-## Imports .tdm maps so they ship in exported games, where the source file is not packed.
+## Imports .tdm maps so they ship in exported games, where the source file is not packed. Maps from before the rename
+## are .gtm files, which import the same way.
 
 func _get_importer_name() -> String:
 	return "trenchdot.tdm"
@@ -12,7 +13,7 @@ func _get_resource_type() -> String:
 	return "TrenchDotImportedMap"
 
 func _get_recognized_extensions() -> PackedStringArray:
-	return PackedStringArray(["tdm"])
+	return PackedStringArray(["tdm", TrenchDotLegacy.MAP_EXTENSION])
 
 func _get_priority():
 	return 1.0

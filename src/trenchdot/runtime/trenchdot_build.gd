@@ -19,7 +19,7 @@ const IMAGE_FILES: PackedStringArray = ["png", "jpg", "jpeg", "webp", "svg", "tg
 const SOUND_FILES: PackedStringArray = ["ogg", "wav", "mp3"]
 const MATERIAL_FILES: PackedStringArray = ["tres", "res", "material"]
 const SCENE_FILES: PackedStringArray = ["tscn", "scn"]
-const MAP_FILES: PackedStringArray = ["tdm"]
+const MAP_FILES: PackedStringArray = ["tdm", TrenchDotLegacy.MAP_EXTENSION]
 
 ## Paths [method map_resource_path] refused while a [FuncGodotMap] builds, whose report lists them. Outside a build
 ## each path it refuses warns once.

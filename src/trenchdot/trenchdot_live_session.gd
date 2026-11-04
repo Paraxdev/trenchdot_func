@@ -59,7 +59,7 @@ func _init(map_path: String, map_nodes: Array[FuncGodotMap]) -> void:
 ## from the saved binary file keeps.
 func begin(text: String, content: Variant = null) -> bool:
 	var json = JSON.parse_string(text)
-	if not json is Dictionary or json.get("format", "") != TrenchDotParser.FORMAT_NAME:
+	if not json is Dictionary or not TrenchDotParser.is_map_format(json.get("format", "")):
 		return false
 	model = json
 	_reindex()

@@ -19,6 +19,10 @@ const MAX_INSTANCE_DEPTH := 8
 ## [method _size]. Instances of instances could otherwise multiply a small map past anything a build can take.
 const MAX_INSTANCED := 1 << 21
 
+## Whether [param format] is the format name of a TrenchDot map, or of one saved as GodotTrench.
+static func is_map_format(format: Variant) -> bool:
+	return format == FORMAT_NAME or format == TrenchDotLegacy.MAP_FORMAT
+
 ## Godot space (map units, Y-up) to FuncGodot's id space.
 static func to_id(v: Vector3) -> Vector3:
 	return Vector3(v.z, v.x, v.y)
@@ -144,7 +148,7 @@ static func paraxial_axes(normal: Vector3) -> Array[Vector3]:
 
 ## Refuses what the editor refuses to open: another format, or a version newer than this importer knows.
 static func _readable(json: Variant, path: String) -> bool:
-	if not json is Dictionary or json.get("format", "") != FORMAT_NAME:
+	if not json is Dictionary or not is_map_format(json.get("format", "")):
 		push_error("[TDM] %s is not a TrenchDot map" % path)
 		return false
 	if int(json.get("version", 0)) > FORMAT_VERSION:
@@ -445,7 +449,7 @@ static func _resolve_instance_path(map_path: String, path: String) -> String:
 	if path.begins_with("res://") or path.begins_with("uid://"):
 		return TrenchDotBuild.map_resource_path(path, TrenchDotBuild.MAP_FILES)
 	var rel := path.simplify_path()
-	if rel == "" or rel.is_absolute_path() or rel.contains(":") or ".." in rel.split("/") or rel.get_extension().to_lower() != "tdm":
+	if rel == "" or rel.is_absolute_path() or rel.contains(":") or ".." in rel.split("/") or not rel.get_extension().to_lower() in TrenchDotBuild.MAP_FILES:
 		return TrenchDotBuild.map_resource_path(path, TrenchDotBuild.MAP_FILES)
 	var resolved := map_path.get_base_dir().path_join(rel)
 	return TrenchDotBuild.map_resource_path(resolved, TrenchDotBuild.MAP_FILES) if resolved.begins_with("res://") else resolved

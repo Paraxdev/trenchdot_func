@@ -27,7 +27,7 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 			return _ParseData.new()
 		map_file = ResourceUID.get_id_path(uid)
 	
-	if map_file.get_extension().to_lower() != "tdm":
+	if not map_file.get_extension().to_lower() in TrenchDotBuild.MAP_FILES:
 		printerr("Error: %s is not a .tdm map" % map_file)
 		return _ParseData.new()
 	var map = TrenchDotTdmFile.load_map(map_file)
