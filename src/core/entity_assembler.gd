@@ -326,13 +326,19 @@ func apply_entity_properties(node: Node, data: _EntityData) -> void:
 	if data.definition.add_properties_to_metadata:
 		node.set_meta("func_godot_properties", properties)
 
+	# Note: the editor runs a script without @tool as a placeholder, which refuses calls with an error.
+	var script := node.get_script() as Script
+	var placeholder := Engine.is_editor_hint() and script != null and not script.is_tool()
 	if node.has_method("_func_godot_apply_properties"):
-		node.call("_func_godot_apply_properties", properties)
+		if placeholder:
+			_problem(str(properties.get("classname", "")), "tool", "%s: %s has no @tool, so its _func_godot_apply_properties does not run in the editor and the built scene misses what it sets from the map. Add @tool to the script" % [properties.get("classname", ""), script.resource_path])
+		else:
+			node.call("_func_godot_apply_properties", properties)
 	elif data.definition and data.definition.meta_properties.get("csharp", false):
 		# C# entities get snake_case map properties on their PascalCase members.
 		TrenchDotCSharp.apply_properties(node, properties)
 	
-	if node.has_method("_func_godot_build_complete"):
+	if node.has_method("_func_godot_build_complete") and not placeholder:
 		node.call_deferred("_func_godot_build_complete")
 
 ## Generate a [Node] from [FuncGodotData.EntityData]. The returned node value can be [code]null[/code], 
