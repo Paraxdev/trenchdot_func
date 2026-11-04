@@ -5,7 +5,8 @@ class_name TrenchDotEditorIntegration extends Node
 ##
 ## Live link protocol: newline delimited JSON over TCP on 127.0.0.1, every message answered by one line that echoes its
 ## [code]seq[/code]. Events:
-## [code]status[/code] (project, Godot version, pid, the edited scene and its maps with their build epoch),
+## [code]status[/code] (project, Godot version, pid, the edited scene and its maps with their build epoch, marked
+## [code]stale[/code] when [method warn_stale_maps] warned about them),
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds of the edited scene, naming the
 ## background scene tabs that use the map too, which build a missed save when shown, and what the builds could not
 ## find, see [method build_summary], a saved prefab also rebuilds the maps that use it, see
@@ -57,6 +58,9 @@ var _scan_requested := false
 ## Counts the scan events, and the last one whose scan is done.
 var _scans := 0
 var _scans_done := 0
+## Instance id of a map node to the definitions it was built with and those it was last warned about, see
+## [method warn_stale_maps].
+var _stale_warned: Dictionary = {}
 
 static func ensure_setting(name: String, value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "") -> void:
 	if not ProjectSettings.has_setting(name):
@@ -163,13 +167,56 @@ func _on_resource_saved(_resource: Resource) -> void:
 	check_definitions()
 
 ## Lets every live session build its maps again when their entity definitions changed since, see
-## [method TrenchDotLiveSession.check_definitions]. Runs when files or script classes change and when a resource
-## is saved, which covers an FGD edited in the Inspector.
+## [method TrenchDotLiveSession.check_definitions], and warns about the other maps of the edited scene, see
+## [method warn_stale_maps]. Runs when files or script classes change and when a resource is saved, which covers an
+## FGD edited in the Inspector.
 func check_definitions() -> void:
 	TrenchDotCSharp.files_changed()
 	TrenchDotFGDFile.files_changed()
 	for session: TrenchDotLiveSession in _sessions.values():
 		session.check_definitions()
+	warn_stale_maps()
+
+## Warns about each map of the edited scene outside a live session whose scene was built with other entity definitions
+## than its map settings hold now, like one built before the Gameplay pack or a custom definition was there. Its
+## entities stay as they were built until the map is built again. Runs when definitions may have changed and when
+## another scene is shown, and warns once for each build and set of definitions.
+func warn_stale_maps() -> void:
+	if not Engine.is_editor_hint():
+		return
+	var fs := EditorInterface.get_resource_filesystem()
+	for map in _scene_maps():
+		var id := map.get_instance_id()
+		var stale := _stale_definitions(map)
+		# Reading the definitions starts a scan when a pack was copied in that Godot does not list yet.
+		if fs.is_scanning():
+			return
+		if stale.is_empty():
+			_stale_warned.erase(id)
+		elif _stale_warned.get(id) != stale:
+			_stale_warned[id] = stale
+			push_warning("[TrenchDot] the scene %s was built from %s with other entity definitions than %s holds now, its entities may be plain nodes or out of date. Build the map again to update them." % [scene_name(EditorInterface.get_edited_scene_root()), resolved_map_path(map), map.get_map_settings().resource_path if map.get_map_settings() else "its map settings"])
+
+## The ids of the entity definitions [param map] was built with and of those its map settings hold now, when they
+## differ and no live session builds it. Empty otherwise.
+func _stale_definitions(map: FuncGodotMap) -> Array:
+	if not map.has_meta(TrenchDotBuild.DEFINITIONS_META):
+		return []
+	for session: TrenchDotLiveSession in _sessions.values():
+		if map in session.maps:
+			return []
+	var built := int(map.get_meta(TrenchDotBuild.DEFINITIONS_META))
+	var current := TrenchDotBuild.definitions_id(map.get_map_settings())
+	return [] if built == current else [built, current]
+
+## The open scenes with a map built with other entity definitions than its map settings hold now, see
+## [method warn_stale_maps].
+func stale_scenes() -> Array:
+	var out := []
+	for root: Node in EditorInterface.get_open_scene_roots():
+		if maps_under(root).any(func(m: FuncGodotMap) -> bool: return not _stale_definitions(m).is_empty()):
+			out.append(scene_name(root))
+	return out
 
 func load_config() -> TrenchDotGameConfig:
 	var path: String = ProjectSettings.get_setting(SETTING_CONFIG, DEFAULT_CONFIG)
@@ -232,6 +279,7 @@ func _process(_delta: float) -> void:
 		if id != _shown_root_id:
 			_shown_root_id = id
 			build_waiting()
+			warn_stale_maps()
 		if _scan_requested and not EditorInterface.get_resource_filesystem().is_scanning():
 			_scan_requested = false
 			_scans_done = _scans
@@ -369,7 +417,8 @@ func scan() -> Dictionary:
 	return { "ok": true, "scan": _scans }
 
 ## Saves the open scenes and runs the project's main scene, as Play does in Godot, so the game starts from the scenes
-## Godot shows, with live edits and builds that were not saved yet.
+## Godot shows, with live edits and builds that were not saved yet. [code]stale[/code] names the open scenes built with
+## other entity definitions, see [method stale_scenes].
 func play() -> Dictionary:
 	var main := str(ProjectSettings.get_setting("application/run/main_scene", ""))
 	if main == "":
@@ -378,9 +427,10 @@ func play() -> Dictionary:
 		return { "ok": false, "error": "the project's main scene %s does not exist" % main }
 	if not Engine.is_editor_hint():
 		return { "ok": false, "error": "only the Godot editor plays the project" }
+	var stale := stale_scenes()
 	EditorInterface.save_all_scenes()
 	EditorInterface.play_main_scene()
-	return { "ok": true }
+	return { "ok": true, "stale": stale } if not stale.is_empty() else { "ok": true }
 
 func _local_path(path: String) -> String:
 	var local := ProjectSettings.localize_path(path)
@@ -431,7 +481,10 @@ func status() -> Dictionary:
 			_sessions.erase(key)
 	var maps := []
 	for key in files:
-		maps.append({ "path": files[key], "epoch": _epochs.get(key, 0) })
+		var entry := { "path": files[key], "epoch": _epochs.get(key, 0) }
+		if ids[key].any(func(id: int) -> bool: return _stale_warned.has(id)):
+			entry["stale"] = true
+		maps.append(entry)
 	return {
 		"ok": true, "project": ProjectSettings.globalize_path("res://"), "godot": Engine.get_version_info()["string"],
 		"pid": OS.get_process_id(), "maps": maps, "scene": scene_name(EditorInterface.get_edited_scene_root()), "scanned": _scans_done,
@@ -632,7 +685,10 @@ func _bump(key: String) -> void:
 	_sessions.erase(key)
 
 func _on_map_built(map: FuncGodotMap) -> void:
-	if TrenchDotLiveSession.building == 0 and is_instance_valid(map):
+	if not is_instance_valid(map):
+		return
+	_stale_warned.erase(map.get_instance_id())
+	if TrenchDotLiveSession.building == 0:
 		_bump(path_key(resolved_map_path(map)))
 
 ## Fully rebuilds every FuncGodotMap in the edited scene that uses [param path], from [param text] when given (unsaved
