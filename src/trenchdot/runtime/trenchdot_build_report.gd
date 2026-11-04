@@ -45,8 +45,8 @@ var map_scripts: PackedStringArray = []
 ## Paths the map names that [method TrenchDotBuild.map_resource_path] refused.
 var refused_paths: PackedStringArray = []
 
-# Whether the Entity Fgd brings the installed Gameplay entities pack, through a TrenchDotFGDFile.
-var _fgd_has_pack := false
+# The TrenchDotFGDFile of the Entity Fgd or its bases, which brings the installed Gameplay entities pack.
+var _pack_fgd: TrenchDotFGDFile
 var _start := 0
 var _step := ""
 var _step_start := 0
@@ -72,7 +72,7 @@ func use_settings(settings: FuncGodotMapSettings) -> void:
 		return
 	map_settings = settings.resource_path
 	entity_fgd = settings.entity_fgd.resource_path if settings.entity_fgd else ""
-	_fgd_has_pack = _includes_pack(settings.entity_fgd, [])
+	_pack_fgd = _pack_file(settings.entity_fgd, [])
 
 ## Starts collecting the paths [method TrenchDotBuild.map_resource_path] refuses, until [method take_refused_paths].
 func collect_refused_paths() -> void:
@@ -219,19 +219,26 @@ func _missing_classes_warning() -> String:
 		return text
 	if not TrenchDotEntityPack.installed():
 		return text + " Install the Gameplay entities pack, it defines %s." % ", ".join(from_pack)
-	if not _fgd_has_pack and entity_fgd.begins_with("res://addons/"):
+	if not _pack_fgd and entity_fgd.begins_with("res://addons/"):
 		return text + " The Gameplay entities pack is installed, but %s is an FGD of the addon, which does not bring it. Set the Entity Fgd of %s to the FGD your game config uses." % [entity_fgd, settings]
-	if not _fgd_has_pack:
+	if not _pack_fgd:
 		return text + " The Gameplay entities pack is installed, but this FGD does not include res://addons/func_godot/fgd/trenchdot_default_fgd.tres, which brings it. Add that to its Base Fgd Files."
+	if _pack_fgd.waiting_for_scan:
+		return text + " The Gameplay entities pack was installed while Godot was running, and Godot is still scanning its files, so this build left it out. Build the map again once the scan is done."
 	return text
 
-static func _includes_pack(fgd: FuncGodotFGDFile, seen: Array) -> bool:
+static func _pack_file(fgd: FuncGodotFGDFile, seen: Array) -> TrenchDotFGDFile:
 	if not fgd or fgd in seen:
-		return false
+		return null
 	if fgd is TrenchDotFGDFile:
-		return true
+		return fgd
 	seen.append(fgd)
-	return fgd.base_fgd_files.any(func(base): return base is FuncGodotFGDFile and _includes_pack(base, seen))
+	for base in fgd.base_fgd_files:
+		if base is FuncGodotFGDFile:
+			var found := _pack_file(base, seen)
+			if found:
+				return found
+	return null
 
 func to_dictionary() -> Dictionary:
 	return {

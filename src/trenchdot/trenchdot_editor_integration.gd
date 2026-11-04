@@ -167,6 +167,7 @@ func _on_resource_saved(_resource: Resource) -> void:
 ## is saved, which covers an FGD edited in the Inspector.
 func check_definitions() -> void:
 	TrenchDotCSharp.files_changed()
+	TrenchDotFGDFile.files_changed()
 	for session: TrenchDotLiveSession in _sessions.values():
 		session.check_definitions()
 

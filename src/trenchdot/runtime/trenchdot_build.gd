@@ -25,6 +25,12 @@ const MAP_FILES: PackedStringArray = ["tdm"]
 ## each path it refuses warns once.
 static var refused_paths: Dictionary = {}
 static var collecting_refused := false
+## Bumped by [method TrenchDotFGDFile.files_changed].
+# Note: this and pack_scans live here because static vars on the TrenchDotFGDFile script made Godot crash on exit
+# now and then.
+static var pack_files_version := 0
+## Pack files a filesystem scan was started for, see [method TrenchDotFGDFile._listed].
+static var pack_scans := {}
 
 static func threaded() -> bool:
 	return bool(ProjectSettings.get_setting(SETTING_THREADED, true))
