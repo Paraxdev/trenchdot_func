@@ -359,9 +359,14 @@ func generate_entity_node(entity_data: _EntityData, entity_index: int) -> Node:
 		else:
 			node_name = "entity_" + name_prop
 	
+	var classname := str(properties.get("classname", ""))
 	if entity_def is FuncGodotFGDSolidClass:
+		if entity_data.brushes.is_empty() and entity_def.spawn_type == FuncGodotFGDSolidClass.SpawnType.ENTITY:
+			_problem(classname, "brushes", "%s is a brush entity without brushes, so it builds no mesh and no collision. Give it brushes or make its definition a FuncGodotFGDPointClass" % classname)
 		node = generate_solid_entity_node(node, node_name, entity_data, entity_def)
 	elif entity_def is FuncGodotFGDPointClass:
+		if not entity_data.brushes.is_empty():
+			_problem(classname, "brushes", "%s is a point entity, so its brushes are dropped. Make its definition a FuncGodotFGDSolidClass" % classname)
 		node = generate_point_entity_node(node, node_name, properties, entity_def)
 	
 	if node:
