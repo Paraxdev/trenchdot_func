@@ -29,3 +29,5 @@ The addon started as a fork of [FuncGodot](https://github.com/func-godot/func_go
 Crawford, Emberlynn Bland, Tim "RhapsodyInGeek" Maccabe and Vera "sinewavey" Lux, itself a rework of
 [Qodot](https://github.com/QodotPlugin/Qodot) by Josh "Shifty" Palmer. The `FuncGodot` class names are kept from it.
 MIT licensed, see [LICENSE](LICENSE).
+
+Godot and the Godot logo are trademarks of the Godot Foundation. This addon is not affiliated with or endorsed by the Godot Foundation.
