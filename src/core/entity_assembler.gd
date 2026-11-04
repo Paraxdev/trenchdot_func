@@ -102,7 +102,7 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 			node = _unresolved_node_class(definition, true)
 	else:
 		node = _script_base_node(definition.script_class)
-	
+
 	name_node(node,node_name)
 	node_name = node_name.trim_suffix(definition.classname).trim_suffix("_")
 	var properties: Dictionary[String, Variant] = data.properties
@@ -160,11 +160,15 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 
 	# Collision generation
 	if data.shapes.size() and node is CollisionObject3D:
-		node.collision_layer = definition.collision_layer
-		node.collision_mask = definition.collision_mask
+		var layer := TrenchDotCollision.layers(properties.get("collision_layer", ""))
+		var mask := TrenchDotCollision.layers(properties.get("collision_mask", ""))
+		node.collision_layer = layer if layer >= 0 else definition.collision_layer
+		node.collision_mask = mask if mask >= 0 else definition.collision_mask
 		# 1 is the class default, a class that picked its own mask keeps it.
-		if node is Area3D and definition.collision_mask == 1:
+		if mask < 0 and node is Area3D and definition.collision_mask == 1:
 			node.collision_mask = map_settings.trigger_collision_mask
+		if data.collision_mode() == "trimesh" and not data.is_collision_concave():
+			_problem(definition.classname, "collision", "%s is no static body, so its trimesh collision builds convex hulls instead" % definition.classname)
 		node.collision_priority = definition.collision_priority
 		
 		var shape_to_face_array : Array[PackedInt32Array] = []
@@ -177,7 +181,7 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 		for i in data.shapes.size():
 			var shape := data.shapes[i]
 			var collision_shape := CollisionShape3D.new()
-			if definition.collision_shape_type == FuncGodotFGDSolidClass.CollisionShapeType.CONCAVE:
+			if data.is_collision_concave():
 				collision_shape.name = node_name + "_collision_shape"
 			else:
 				collision_shape.name = node_name + "_brush_%s_collision_shape" % i
@@ -191,8 +195,8 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 		
 		if definition.add_collision_shape_to_face_indices_metadata:
 			data.mesh_metadata['collision_shape_to_face_indices_map'] = face_index_metadata
-	elif data.shapes.size() and node.get_class() == "Node3D" and not problems.has(definition.classname + ":node_class"):
-		_problem(definition.classname, "collision", "%s builds as a Node3D, so its brushes have no collision. Set Node Class to StaticBody3D, AnimatableBody3D or Area3D" % definition.classname)
+	elif data.shapes.size() and (definition.node_class == "" or node.get_class() == "Node3D") and not problems.has(definition.classname + ":node_class"):
+		_problem(definition.classname, "collision", "%s builds as a %s, so its brushes have no collision. Set Node Class to StaticBody3D, AnimatableBody3D or Area3D" % [definition.classname, node.get_class()])
 
 	if "position" in node:
 		if node.position is Vector3:

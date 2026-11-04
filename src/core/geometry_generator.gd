@@ -677,6 +677,16 @@ func build(build_flags: int, entities: Array[_EntityData]) -> Error:
 
 	declare_step.emit("Creating collision shapes")
 	for entity in entity_data:
+		if entity.collision_mode() == "box" and entity.pending_convex_points.size():
+			var bounds := AABB(entity.pending_convex_points[0][0], Vector3.ZERO)
+			for points in entity.pending_convex_points:
+				for p in points:
+					bounds = bounds.expand(p)
+			var corners := PackedVector3Array()
+			for i in 8:
+				corners.append(bounds.get_endpoint(i))
+			entity.pending_convex_points.clear()
+			entity.pending_convex_points.append(corners)
 		for points in entity.pending_convex_points:
 			var convex := ConvexPolygonShape3D.new()
 			convex.points = points

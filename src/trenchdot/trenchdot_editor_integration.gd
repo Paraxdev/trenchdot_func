@@ -108,6 +108,9 @@ func _ready() -> void:
 	ensure_setting(SETTING_PORT, DEFAULT_PORT, TYPE_INT, PROPERTY_HINT_RANGE, "%d,%d" % [MIN_PORT, MAX_PORT])
 	ensure_setting(TrenchDotBuild.SETTING_THREADED, true, TYPE_BOOL)
 	ensure_setting(TrenchDotLiveSession.SETTING_CHUNK_SIZE, TrenchDotLiveSession.DEFAULT_CHUNK_SIZE, TYPE_FLOAT, PROPERTY_HINT_RANGE, "2,256,1,suffix:m")
+	ensure_setting(TrenchDotCollision.SETTING_SHAPE, "convex", TYPE_STRING, PROPERTY_HINT_ENUM, ",".join(TrenchDotCollision.MODES))
+	ensure_setting(TrenchDotCollision.SETTING_LAYER, 1, TYPE_INT, PROPERTY_HINT_LAYERS_3D_PHYSICS)
+	ensure_setting(TrenchDotCollision.SETTING_MASK, 1, TYPE_INT, PROPERTY_HINT_LAYERS_3D_PHYSICS)
 	ensure_setting(TrenchDotCSharp.SETTING, PackedStringArray(["res://"]), TYPE_PACKED_STRING_ARRAY, PROPERTY_HINT_TYPE_STRING, "%d/%d:" % [TYPE_STRING, PROPERTY_HINT_DIR])
 
 	_export_timer = Timer.new()

@@ -199,19 +199,40 @@ class EntityData extends RefCounted:
 				and definition.global_illumination_mode
 		)
 	
-	## Checks the entity's FGD resource definition, returning whether the Solid Class CollisionShapeType is set to Convex.
+	## The entity's "collision" key: default, none, box, convex, decomposition or trimesh.
+	func collision_mode() -> String:
+		return str(properties.get("collision", "")).strip_edges().to_lower()
+
+	## The shape type the "collision" key asks for, else the Solid Class CollisionShapeType. Brushes are convex
+	## already, so decomposition builds one hull per brush, and trimesh needs a static body.
+	func collision_shape_type() -> FuncGodotFGDSolidClass.CollisionShapeType:
+		if not (definition and definition is FuncGodotFGDSolidClass):
+			return FuncGodotFGDSolidClass.CollisionShapeType.NONE
+		match collision_mode():
+			"none":
+				return FuncGodotFGDSolidClass.CollisionShapeType.NONE
+			"box", "convex", "decomposition":
+				return FuncGodotFGDSolidClass.CollisionShapeType.CONVEX
+			"trimesh":
+				return FuncGodotFGDSolidClass.CollisionShapeType.CONCAVE if builds_static_body() else FuncGodotFGDSolidClass.CollisionShapeType.CONVEX
+		return definition.collision_shape_type
+
+	## Whether the node the definition builds is a [StaticBody3D], counting [AnimatableBody3D].
+	func builds_static_body() -> bool:
+		var cls := StringName(definition.node_class)
+		if cls == &"":
+			cls = definition.script_class.get_instance_base_type() if definition.script_class else &""
+			if cls == &"" or cls == &"Node3D":
+				return true
+		return ClassDB.class_exists(cls) and ClassDB.is_parent_class(cls, &"StaticBody3D")
+
+	## Whether the entity builds a convex hull per brush.
 	func is_collision_convex() -> bool:
-		return (definition 
-				and definition is FuncGodotFGDSolidClass 
-				and definition.collision_shape_type == FuncGodotFGDSolidClass.CollisionShapeType.CONVEX
-		)
-	
-	## Checks the entity's FGD resource definition, returning whether the Solid Class CollisionShapeType is set to Concave.
+		return collision_shape_type() == FuncGodotFGDSolidClass.CollisionShapeType.CONVEX
+
+	## Whether the entity builds one trimesh of all its faces.
 	func is_collision_concave() -> bool:
-		return (definition 
-				and definition is FuncGodotFGDSolidClass 
-				and definition.collision_shape_type == FuncGodotFGDSolidClass.CollisionShapeType.CONCAVE
-		)
+		return collision_shape_type() == FuncGodotFGDSolidClass.CollisionShapeType.CONCAVE
 	
 	## Determines if the entity's mesh should be processed for normal smoothing. 
 	## The smoothing property can be retrieved from [member FuncGodotMapSettings.entity_smoothing_property].

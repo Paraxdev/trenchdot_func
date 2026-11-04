@@ -1,12 +1,14 @@
 @tool
 class_name TrenchDotProp extends Node3D
 ## Prop entity that instantiates a model given by its "model" property (.bbmodel, .glb, .gltf or .tscn).
-## "collision" can be none, convex or trimesh. "model_node" keeps only the node of that name from the model, placed
+## "collision" picks the shape, see [TrenchDotCollision]. "model_node" keeps only the node of that name from the model, placed
 ## at the prop's origin, for files that hold several variants side by side.
 
 @export var model: String = ""
 @export var model_node: String = ""
-@export_enum("none", "convex", "trimesh") var collision: String = "convex"
+@export_enum("default", "none", "box", "convex", "decomposition", "trimesh") var collision: String = "default"
+@export var collision_layer := ""
+@export var collision_mask := ""
 
 ## Set while a [FuncGodotMap] builds, whose report warns once per missing model instead.
 static var quiet_missing := false
@@ -23,6 +25,8 @@ func _func_godot_apply_properties(properties: Dictionary) -> void:
 	model = str(properties.get("model", model))
 	model_node = str(properties.get("model_node", model_node)).strip_edges()
 	collision = str(properties.get("collision", collision))
+	collision_layer = str(properties.get("collision_layer", collision_layer))
+	collision_mask = str(properties.get("collision_mask", collision_mask))
 	rebuild()
 
 func rebuild() -> void:
@@ -53,23 +57,17 @@ func rebuild() -> void:
 		instance.owner = owner
 		if model_node != "":
 			_own_subtree(instance)
-	if collision == "none" or _has_collision(instance):
+	var shape_mode := TrenchDotCollision.mode(collision)
+	if shape_mode == "none" or _has_collision(instance):
 		return
 	var body := StaticBody3D.new()
 	body.name = "prop_collision"
 	body.set_meta(&"td_prop_generated", true)
+	TrenchDotCollision.apply_layers(body, { "collision_layer": collision_layer, "collision_mask": collision_mask })
 	add_child(body)
 	if owner:
 		body.owner = owner
-	for mi in _mesh_instances(instance):
-		if not mi.mesh:
-			continue
-		var shape := CollisionShape3D.new()
-		shape.shape = mi.mesh.create_convex_shape() if collision == "convex" else mi.mesh.create_trimesh_shape()
-		shape.transform = global_transform.affine_inverse() * mi.global_transform if is_inside_tree() else _relative_transform(mi)
-		body.add_child(shape)
-		if owner:
-			shape.owner = owner
+	TrenchDotCollision.add_shapes(body, TrenchDotCollision.shapes(instance, self, shape_mode), owner)
 
 ## Takes the node named model_node out of the instanced model with its transform relative to the model root, minus the
 ## offset, and frees the rest.
@@ -100,15 +98,6 @@ func _own_subtree(node: Node) -> void:
 		c.owner = owner
 		_own_subtree(c)
 
-func _relative_transform(node: Node3D) -> Transform3D:
-	var t := Transform3D.IDENTITY
-	var n: Node = node
-	while n and n != self:
-		if n is Node3D:
-			t = (n as Node3D).transform * t
-		n = n.get_parent()
-	return t
-
 func _has_collision(node: Node) -> bool:
 	if node is CollisionObject3D:
 		return true
@@ -116,13 +105,3 @@ func _has_collision(node: Node) -> bool:
 		if _has_collision(c):
 			return true
 	return false
-
-func _mesh_instances(node: Node) -> Array[MeshInstance3D]:
-	var out: Array[MeshInstance3D] = []
-	var stack: Array[Node] = [node]
-	while not stack.is_empty():
-		var n: Node = stack.pop_back()
-		if n is MeshInstance3D:
-			out.append(n)
-		stack.append_array(n.get_children())
-	return out

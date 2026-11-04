@@ -88,6 +88,14 @@ static func _has_script(root: Node) -> bool:
 		stack.append_array(n.get_children())
 	return false
 
+## [Shape3D, Transform3D] pairs one instance of [param template] collides with. Convex is one hull around all its
+## meshes, the way scatter sets always built it.
+static func _shapes_for(template: Node, mode: String) -> Array:
+	if mode in ["box", "decomposition"]:
+		return TrenchDotCollision.shapes(template, template, mode)
+	var shape := _shape_for(template, mode)
+	return [[shape, Transform3D.IDENTITY]] if shape else []
+
 static func _shape_for(template: Node, mode: String) -> Shape3D:
 	var faces := PackedVector3Array()
 	for mi in _mesh_instances(template):
@@ -255,15 +263,13 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 					chunk.material_override = override_material
 				node.add_child(chunk)
 		if node.collision != "none":
-			var shape := _shape_for(template, node.collision)
-			if shape:
+			var pairs := _shapes_for(template, node.collision)
+			if not pairs.is_empty():
 				var body := StaticBody3D.new()
 				body.name = "%s_collision" % item_name
+				TrenchDotCollision.apply_layers(body, {})
 				node.add_child(body)
 				for t in all:
-					var cs := CollisionShape3D.new()
-					cs.shape = shape
-					cs.transform = t
-					body.add_child(cs)
+					TrenchDotCollision.add_shapes(body, pairs, null, t)
 		template.free()
 	return node
