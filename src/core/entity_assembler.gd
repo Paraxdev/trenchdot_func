@@ -57,13 +57,22 @@ static func _node_of_class(definition: FuncGodotFGDEntityClass) -> Node:
 	var script: Script = get_script_by_class_name(definition.node_class)
 	return script.new() if script is Script else null
 
-## Records that [param definition]'s Node Class does not resolve and returns the [Node3D] the entity builds as instead.
+## The node an entity without a Node Class builds as: the engine class [param script] extends when that is a
+## [Node3D], so a script extending a body gets one and can be assigned, else a [Node3D].
+static func _script_base_node(script: Script) -> Node:
+	var base := script.get_instance_base_type() if script else &""
+	if base != &"" and ClassDB.can_instantiate(base) and ClassDB.is_parent_class(base, &"Node3D"):
+		return ClassDB.instantiate(base)
+	return Node3D.new()
+
+## Records that [param definition]'s Node Class does not resolve and returns the node the entity builds as instead.
 func _unresolved_node_class(definition: FuncGodotFGDEntityClass, error: bool) -> Node:
-	var problem := "%s: Node Class %s not found, building it as a Node3D" % [definition.classname, definition.node_class]
+	var node := _script_base_node(definition.script_class)
+	var problem := "%s: Node Class %s not found, building it as a %s" % [definition.classname, definition.node_class, node.get_class()]
 	if definition.meta_properties.get("csharp", false):
 		problem += ". C# entities need the .NET build of Godot, a built C# project and [GlobalClass] on the class"
 	_problem(definition.classname, "node_class", problem, error)
-	return Node3D.new()
+	return node
 
 ## Generates a [Node3D] for a group's [SceneTree] representation and links the new [Node3D] to that group.
 func generate_group_node(group_data: _GroupData) -> Node3D:
@@ -92,7 +101,7 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 		if not node:
 			node = _unresolved_node_class(definition, true)
 	else:
-		node = Node3D.new()
+		node = _script_base_node(definition.script_class)
 	
 	name_node(node,node_name)
 	node_name = node_name.trim_suffix(definition.classname).trim_suffix("_")
@@ -182,6 +191,8 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 		
 		if definition.add_collision_shape_to_face_indices_metadata:
 			data.mesh_metadata['collision_shape_to_face_indices_map'] = face_index_metadata
+	elif data.shapes.size() and node.get_class() == "Node3D" and not problems.has(definition.classname + ":node_class"):
+		_problem(definition.classname, "collision", "%s builds as a Node3D, so its brushes have no collision. Set Node Class to StaticBody3D, AnimatableBody3D or Area3D" % definition.classname)
 
 	if "position" in node:
 		if node.position is Vector3:
@@ -208,7 +219,7 @@ func generate_point_entity_node(node: Node, node_name: String, properties: Dicti
 		if not node:
 			node = _unresolved_node_class(definition, false)
 	if not node:
-		node = Node3D.new()
+		node = _script_base_node(definition.script_class)
 	
 	name_node(node,node_name)
 	
