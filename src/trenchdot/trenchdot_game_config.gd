@@ -11,7 +11,7 @@ const FORMAT_VERSION := 1
 @export_tool_button("Export TrenchDot Game Config") var _export_button: Callable = export_file
 
 @export var game_name: String = "FuncGodot"
-@export var fgd_file: FuncGodotFGDFile = preload("res://addons/func_godot/fgd/func_godot_fgd.tres")
+@export var fgd_file: FuncGodotFGDFile = preload("res://addons/func_godot/fgd/trenchdot_default_fgd.tres")
 @export var map_settings: FuncGodotMapSettings = preload("res://addons/func_godot/func_godot_default_map_settings.tres")
 ## Written relative to the project, the TrenchDot editor looks for it in the project root.
 @export_file("*.json") var output_path: String = "res://trenchdot_game.json"

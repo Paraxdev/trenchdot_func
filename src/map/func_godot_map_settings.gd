@@ -3,6 +3,8 @@
 class_name FuncGodotMapSettings extends Resource
 ## Reusable map settings configuration for [FuncGodotMap] nodes.
 
+const _DEFAULT_ENTITY_FGD := "res://addons/func_godot/fgd/trenchdot_default_fgd.tres"
+
 #region BUILD
 @export_group("Build Settings")
 
@@ -19,8 +21,11 @@ var scale_factor: float = 0.03125
 		inverse_scale_factor = value
 		scale_factor = 1.0 / value
 
-## [FuncGodotFGDFile] that translates map file classnames into Godot nodes and packed scenes.
-@export var entity_fgd: FuncGodotFGDFile = preload("res://addons/func_godot/fgd/func_godot_fgd.tres")
+## [FuncGodotFGDFile] that translates map file classnames into Godot nodes and packed scenes. New settings start on
+## the TrenchDot FGD, with the addon's entities and the installed Gameplay entities pack.
+# Note: preload would be a cyclic reference, the entity scripts of that FGD depend on scripts that read this property.
+# A game exported with only selected scenes and their dependencies may lack the file.
+@export var entity_fgd: FuncGodotFGDFile = load(_DEFAULT_ENTITY_FGD) if ResourceLoader.exists(_DEFAULT_ENTITY_FGD) else null
 
 ## If true, will organize [SceneTree] using the map's layers and groups. Groups will be generated as [Node3D] nodes. 
 ## Layers the map omits from the build and their child entities and groups will not be built.
