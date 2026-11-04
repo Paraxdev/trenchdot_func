@@ -7,6 +7,8 @@ class_name TDPropPhysics extends RigidBody3D
 signal damaged(hp: float)
 signal broken
 
+const _Explosion := preload("td_explosion.gd")
+
 ## res:// scene used for the visual, its collision is ignored in favor of a box from size.
 @export var model := ""
 ## Half extents of the box collision in map units.
@@ -105,7 +107,7 @@ func smash() -> void:
 	_broken = true
 	var parent := get_parent()
 	if explosive and parent:
-		var boom := TDExplosion.new()
+		var boom := _Explosion.new()
 		boom.radius = explosion_radius
 		boom.damage = explosion_damage
 		parent.add_child(boom)
