@@ -9,6 +9,7 @@ var legacy_import_plugin: TrenchDotLegacyImportPlugin = null
 var edited_object_ref: WeakRef = weakref(null)
 var trenchdot: TrenchDotEditorIntegration = null
 var bbmodel_import_plugin: TrenchDotBBModelImportPlugin = null
+var legacy_bbmodel_import_plugin: TrenchDotLegacyBBModelImportPlugin = null
 
 func _get_plugin_name() -> String:
 	return "FuncGodot"
@@ -32,6 +33,8 @@ func _enter_tree() -> void:
 	add_import_plugin(legacy_import_plugin)
 	bbmodel_import_plugin = TrenchDotBBModelImportPlugin.new()
 	add_import_plugin(bbmodel_import_plugin)
+	legacy_bbmodel_import_plugin = TrenchDotLegacyBBModelImportPlugin.new()
+	add_import_plugin(legacy_bbmodel_import_plugin)
 
 	#func_godot_map_progress_bar = create_func_godot_map_progress_bar()
 	#func_godot_map_progress_bar.set_visible(false)
@@ -86,6 +89,9 @@ func _exit_tree() -> void:
 	if bbmodel_import_plugin:
 		remove_import_plugin(bbmodel_import_plugin)
 		bbmodel_import_plugin = null
+	if legacy_bbmodel_import_plugin:
+		remove_import_plugin(legacy_bbmodel_import_plugin)
+		legacy_bbmodel_import_plugin = null
 	
 	#if func_godot_map_progress_bar:
 		#remove_control_from_container(EditorPlugin.CONTAINER_INSPECTOR_BOTTOM, func_godot_map_progress_bar)

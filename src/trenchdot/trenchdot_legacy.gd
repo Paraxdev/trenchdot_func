@@ -4,6 +4,7 @@ class_name TrenchDotLegacy extends RefCounted
 const MAP_EXTENSION := "gtm"
 const MAP_FORMAT := "godottrench-map"
 const MAP_IMPORTER := "godottrench.gtm"
+const BBMODEL_IMPORTER := "godottrench.bbmodel"
 ## Where the Gameplay entities pack was installed.
 const PACK_DIR := "res://godottrench/entities"
 ## The game config the editor read before trenchdot_game.json.
