@@ -102,6 +102,10 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 			node = _unresolved_node_class(definition, true)
 	else:
 		node = _script_base_node(definition.script_class)
+		# Brushes that would collide need a body, and a script extending Node3D fits on one.
+		if node.get_class() == "Node3D" and data.shapes.size():
+			node.free()
+			node = StaticBody3D.new()
 
 	name_node(node,node_name)
 	node_name = node_name.trim_suffix(definition.classname).trim_suffix("_")
