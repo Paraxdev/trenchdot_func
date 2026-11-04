@@ -28,14 +28,24 @@ static func classnames() -> PackedStringArray:
 
 ## The pack's classnames that the .tdm maps under [param root] use and [param defined] lacks.
 static func missing(defined: Dictionary, root := "res://") -> PackedStringArray:
-	var wanted := Array(classnames()).filter(func(c): return not defined.has(c))
-	var out := PackedStringArray()
+	var used := {}
 	for path in _maps(root, PackedStringArray()):
-		var text := FileAccess.get_file_as_string(path)
-		for c in wanted:
-			if not c in out and text.contains("\"%s\"" % c):
-				out.append(c)
-	return out
+		var map: Variant = TrenchDotTdmFile.read(path)["map"]
+		if map != null:
+			_classnames_in(map, used)
+	return PackedStringArray(Array(classnames()).filter(func(c): return used.has(c) and not defined.has(c)))
+
+## Adds every classname in a decoded map to [param out].
+static func _classnames_in(map: Variant, out: Dictionary) -> void:
+	var stack: Array = [map]
+	while not stack.is_empty():
+		var value: Variant = stack.pop_back()
+		if value is Dictionary:
+			if value.get("classname") is String:
+				out[value["classname"]] = true
+			stack.append_array(value.values())
+		elif value is Array:
+			stack.append_array(value)
 
 static func _maps(dir: String, out: PackedStringArray) -> PackedStringArray:
 	for f in DirAccess.get_files_at(dir):
