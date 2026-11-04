@@ -244,6 +244,7 @@ func _build(text: String) -> TrenchDotBuildReport:
 
 	# Assemble entities and groups
 	var assembler := FuncGodotEntityAssembler.new(settings)
+	assembler.quiet_problems = true
 	assembler.declare_step.connect(report.step)
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nENTITY ASSEMBLER")
@@ -253,6 +254,7 @@ func _build(text: String) -> TrenchDotBuildReport:
 	assembler.build(self, entities, groups)
 	TrenchDotProp.quiet_missing = false
 	report.check_entities(entities)
+	report.definition_problems.assign(assembler.problems.values())
 	report.check_targets(entities, self)
 
 	TrenchDotProbes.fit_volumes(entities)

@@ -1,10 +1,11 @@
 class_name TrenchDotBuildReport extends RefCounted
 ## What one [FuncGodotMap] build made and what it could not find: the time of each step, entities per class, the
-## vertex count, missing entity definitions, models and materials, tool textures the map settings do not know,
-## targets that match no node in the map, logic_script entities that carry GDScript, and resource paths it refused to
-## load because they point outside the project or at the wrong kind of file. [method FuncGodotMap.build]
-## returns it as [method to_dictionary] and keeps it in [member FuncGodotMap.build_report]. The
-## [code]Print Build Report[/code] build flag prints it, and [method warn] pushes its [method warnings].
+## vertex count, missing entity definitions and ones that do not build what they describe, missing models and
+## materials, tool textures the map settings do not know, targets that match no node in the map, logic_script entities
+## that carry GDScript, and resource paths it refused to load because they point outside the project or at the wrong
+## kind of file. [method FuncGodotMap.build] returns it as [method to_dictionary] and keeps it in
+## [member FuncGodotMap.build_report]. The [code]Print Build Report[/code] build flag prints it, and [method warn]
+## pushes its [method warnings].
 
 ## Tool texture names the TrenchDot editor uses unless the game config names them otherwise.
 const EDITOR_TOOL_TEXTURES := { "clip": "special/clip", "skip": "special/skip", "origin": "special/origin", "sky": "special/sky" }
@@ -28,6 +29,9 @@ var steps: Array[Dictionary] = []
 var entities: Dictionary = {}
 var vertices := 0
 var missing_classes: PackedStringArray = []
+## Definitions that do not build what they describe, [code]{classname, problem, error}[/code] each, see
+## [member FuncGodotEntityAssembler.problems].
+var definition_problems: Array[Dictionary] = []
 ## Model path to the names of the entities using it.
 var missing_models: Dictionary = {}
 ## Face textures with neither a material file nor an image, which build with the checker texture.
@@ -162,14 +166,34 @@ func count_vertices(map_node: Node) -> void:
 		stack.append_array(n.get_children())
 
 ## Every warning of the build, one line each without the [code][TrenchDot][/code] prefix [method warn] adds: one
-## for all classes without a definition, one per missing model, material, tool texture and refused path, however many
-## entities or faces share it, and one per logic_script with code. The TrenchDot editor shows them after a save.
+## for all classes without a definition, one per definition problem, one per missing model, material, tool texture and
+## refused path, however many entities or faces share it, and one per logic_script with code. The TrenchDot editor
+## shows them after a save.
 func warnings() -> PackedStringArray:
-	var out := PackedStringArray()
+	return PackedStringArray(_lines().map(func(line: Array) -> String: return line[0]))
+
+func warn() -> void:
+	for line in _lines():
+		if line[1]:
+			push_error("[TrenchDot] " + line[0])
+		else:
+			push_warning("[TrenchDot] " + line[0])
+
+## [method warnings], each as [code][text, is_error][/code].
+func _lines() -> Array:
+	var out := []
 	if project_map_settings != "":
-		out.append("the map node of %s uses the addon's default map settings, not %s from Project Settings. Clear its Map Settings in the Inspector to follow the project setting." % [map_file, project_map_settings])
+		out.append(["the map node of %s uses the addon's default map settings, not %s from Project Settings. Clear its Map Settings in the Inspector to follow the project setting." % [map_file, project_map_settings], false])
 	if not missing_classes.is_empty():
-		out.append(_missing_classes_warning())
+		out.append([_missing_classes_warning(), false])
+	for problem in definition_problems:
+		out.append([problem["problem"], problem["error"]])
+	for line in _resource_warnings():
+		out.append([line, false])
+	return out
+
+func _resource_warnings() -> PackedStringArray:
+	var out := PackedStringArray()
 	for script in map_scripts:
 		out.append("logic_script %s runs GDScript stored in the map when the scene plays" % script)
 	for model in missing_models:
@@ -183,10 +207,6 @@ func warnings() -> PackedStringArray:
 	for path in refused_paths:
 		out.append("the map names %s, which is not loaded: maps may only name models, images, sounds, materials and prefabs inside the project" % path)
 	return out
-
-func warn() -> void:
-	for line in warnings():
-		push_warning("[TrenchDot] " + line)
 
 func _missing_classes_warning() -> String:
 	var count := missing_classes.size()
@@ -224,6 +244,7 @@ func to_dictionary() -> Dictionary:
 		"entities": entities,
 		"vertices": vertices,
 		"missing_classes": missing_classes,
+		"definition_problems": definition_problems,
 		"missing_models": missing_models,
 		"missing_materials": missing_materials,
 		"unknown_tool_textures": unknown_tool_textures,

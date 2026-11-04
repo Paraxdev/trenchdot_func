@@ -13,6 +13,11 @@ const _EntityData	:= FuncGodotData.EntityData
 var map_settings: FuncGodotMapSettings = null
 ## [enum FuncGodotMap.BuildFlags] that may affect the build process provided by the [FuncGodotMap].
 var build_flags: int = 0
+## Definitions that do not build what they describe, one [code]{classname, problem, error}[/code] per classname and
+## kind of problem. Each is pushed as it is found, unless [member quiet_problems] is set.
+var problems: Dictionary = {}
+## Set by a [FuncGodotMap] build, whose report pushes the [member problems] instead.
+var quiet_problems := false
 
 # Signals
 ## Emitted when a step in the entity assembly process is completed. 
@@ -32,6 +37,33 @@ static func get_script_by_class_name(name_of_class: String) -> Script:
 		if found_name_of_class == name_of_class:
 			return load(found_path) as Script
 	return null
+
+func _problem(classname: String, kind: String, problem: String, error := false) -> void:
+	var key := classname + ":" + kind
+	if problems.has(key):
+		return
+	problems[key] = { "classname": classname, "problem": problem, "error": error }
+	if quiet_problems:
+		return
+	if error:
+		push_error("[TrenchDot] " + problem)
+	else:
+		push_warning("[TrenchDot] " + problem)
+
+## A new node of [param definition]'s Node Class, null when neither Godot nor a script class knows that name.
+static func _node_of_class(definition: FuncGodotFGDEntityClass) -> Node:
+	if ClassDB.class_exists(definition.node_class):
+		return ClassDB.instantiate(definition.node_class)
+	var script: Script = get_script_by_class_name(definition.node_class)
+	return script.new() if script is Script else null
+
+## Records that [param definition]'s Node Class does not resolve and returns the [Node3D] the entity builds as instead.
+func _unresolved_node_class(definition: FuncGodotFGDEntityClass, error: bool) -> Node:
+	var problem := "%s: Node Class %s not found, building it as a Node3D" % [definition.classname, definition.node_class]
+	if definition.meta_properties.get("csharp", false):
+		problem += ". C# entities need the .NET build of Godot, a built C# project and [GlobalClass] on the class"
+	_problem(definition.classname, "node_class", problem, error)
+	return Node3D.new()
 
 ## Generates a [Node3D] for a group's [SceneTree] representation and links the new [Node3D] to that group.
 func generate_group_node(group_data: _GroupData) -> Node3D:
@@ -56,12 +88,9 @@ func generate_solid_entity_node(node: Node, node_name: String, data: _EntityData
 		return null
 	
 	if definition.node_class != "":
-		if ClassDB.class_exists(definition.node_class):
-				node = ClassDB.instantiate(definition.node_class)
-		else:
-			var script: Script = get_script_by_class_name(definition.node_class)
-			if script is Script:
-				node = script.new()
+		node = _node_of_class(definition)
+		if not node:
+			node = _unresolved_node_class(definition, true)
 	else:
 		node = Node3D.new()
 	
@@ -175,12 +204,9 @@ func generate_point_entity_node(node: Node, node_name: String, properties: Dicti
 			flag = PackedScene.GEN_EDIT_STATE_INSTANCE
 		node = definition.scene_file.instantiate(flag)
 	elif definition.node_class != "":
-		if ClassDB.class_exists(definition.node_class):
-				node = ClassDB.instantiate(definition.node_class)
-		else:
-			var script: Script = get_script_by_class_name(definition.node_class)
-			if script is Script:
-				node = script.new()
+		node = _node_of_class(definition)
+		if not node:
+			node = _unresolved_node_class(definition, false)
 	if not node:
 		node = Node3D.new()
 	
