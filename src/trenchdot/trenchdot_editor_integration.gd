@@ -107,6 +107,11 @@ func _ready() -> void:
 	var fs := EditorInterface.get_resource_filesystem()
 	if fs and not fs.filesystem_changed.is_connected(_on_filesystem_changed):
 		fs.filesystem_changed.connect(_on_filesystem_changed)
+	if fs and not fs.script_classes_updated.is_connected(check_definitions):
+		fs.script_classes_updated.connect(check_definitions)
+	if plugin and not plugin.resource_saved.is_connected(_on_resource_saved):
+		plugin.resource_saved.connect(_on_resource_saved)
+	TrenchDotCSharp.keep_file_list = true
 
 	apply_link_settings()
 	if not ProjectSettings.settings_changed.is_connected(apply_link_settings):
@@ -114,6 +119,7 @@ func _ready() -> void:
 	_install_pack_for_maps.call_deferred()
 
 func _exit_tree() -> void:
+	TrenchDotCSharp.keep_file_list = false
 	if ProjectSettings.settings_changed.is_connected(apply_link_settings):
 		ProjectSettings.settings_changed.disconnect(apply_link_settings)
 	stop_live_link()
@@ -143,6 +149,18 @@ func stop_live_link() -> void:
 func _on_filesystem_changed() -> void:
 	if ProjectSettings.get_setting(SETTING_AUTO_EXPORT, true):
 		_export_timer.start()
+	check_definitions()
+
+func _on_resource_saved(_resource: Resource) -> void:
+	check_definitions()
+
+## Lets every live session build its maps again when their entity definitions changed since, see
+## [method TrenchDotLiveSession.check_definitions]. Runs when files or script classes change and when a resource
+## is saved, which covers an FGD edited in the Inspector.
+func check_definitions() -> void:
+	TrenchDotCSharp.files_changed()
+	for session: TrenchDotLiveSession in _sessions.values():
+		session.check_definitions()
 
 func load_config() -> TrenchDotGameConfig:
 	var path: String = ProjectSettings.get_setting(SETTING_CONFIG, DEFAULT_CONFIG)

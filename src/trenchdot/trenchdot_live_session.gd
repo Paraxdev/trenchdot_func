@@ -96,6 +96,13 @@ func apply(ops: Array) -> bool:
 	_mark_scene_unsaved()
 	return true
 
+## Queues a full build when a map was last fully built with other entity definitions than its map settings hold now.
+## Live edits only rebuild the entities they touch, this brings the others up to date too.
+func check_definitions() -> void:
+	for map in _live_maps():
+		if not TrenchDotBuild.built_with_current_definitions(map):
+			_full = true
+
 func pending() -> bool:
 	return _full or _environment or not (_groups.is_empty() and _entities.is_empty() and _terrains.is_empty() and _scatters.is_empty() and _loose.is_empty() and _drag_nodes_needed.is_empty())
 
