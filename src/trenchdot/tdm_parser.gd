@@ -441,14 +441,43 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 
 ## The prefab an instance names, empty unless it is a .tdm in the project. A relative path is beside the map that
 ## names it and may not climb out with "..", so it only leaves the project for a map that is outside it already.
-static func _resolve_instance_path(ctx: Context, path: String) -> String:
+static func _resolve_instance_path(map_path: String, path: String) -> String:
 	if path.begins_with("res://") or path.begins_with("uid://"):
 		return TrenchDotBuild.map_resource_path(path, TrenchDotBuild.MAP_FILES)
 	var rel := path.simplify_path()
 	if rel == "" or rel.is_absolute_path() or rel.contains(":") or ".." in rel.split("/") or rel.get_extension().to_lower() != "tdm":
 		return TrenchDotBuild.map_resource_path(path, TrenchDotBuild.MAP_FILES)
-	var resolved := ctx.map_path.get_base_dir().path_join(rel)
+	var resolved := map_path.get_base_dir().path_join(rel)
 	return TrenchDotBuild.map_resource_path(resolved, TrenchDotBuild.MAP_FILES) if resolved.begins_with("res://") else resolved
+
+## The prefab files [param map] instances outside omitted layers, resolved from [param map_path] the way a build
+## resolves them, and the ones those instance in turn.
+static func prefabs(map: Dictionary, map_path: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	_collect_prefabs(map, map_path, out, 0)
+	return out
+
+static func _collect_prefabs(map: Dictionary, map_path: String, out: PackedStringArray, depth: int) -> void:
+	if depth >= MAX_INSTANCE_DEPTH:
+		return
+	var stack := []
+	for layer in map.get("layers", []):
+		if _is_layer(layer) and not bool(layer.get("omit_from_export", false)):
+			stack.append_array(layer.get("children", []))
+	while not stack.is_empty():
+		var node: Variant = stack.pop_back()
+		if not node is Dictionary:
+			continue
+		if node.get("type", "") != "instance":
+			stack.append_array(node.get("children", []))
+			continue
+		var path := _resolve_instance_path(map_path, str(node.get("path", "")))
+		if path == "" or path in out:
+			continue
+		out.append(path)
+		var prefab: Variant = TrenchDotTdmFile.read(path)["map"]
+		if prefab is Dictionary:
+			_collect_prefabs(prefab, path, out, depth + 1)
 
 
 ## [param name] as named inside the instance being parsed. Special (!self), group (@doors) and node path targets are
@@ -484,7 +513,7 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 	if ctx.instance_depth >= MAX_INSTANCE_DEPTH:
 		push_error("[TDM] instance nesting deeper than %d, skipping %s" % [MAX_INSTANCE_DEPTH, node.get("path", "")])
 		return
-	var path := _resolve_instance_path(ctx, str(node.get("path", "")))
+	var path := _resolve_instance_path(ctx.map_path, str(node.get("path", "")))
 	if path == "":
 		return
 	if not ctx.prefabs.has(path):

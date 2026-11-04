@@ -152,6 +152,14 @@ func check_definitions() -> void:
 		if not TrenchDotBuild.built_with_current_definitions(map):
 			_full = true
 
+## Queues a full build, for changes the live edits do not carry, like a saved prefab the map instances.
+func queue_full_build() -> void:
+	_full = true
+
+## The prefab files the map instances, directly or through other prefabs.
+func prefabs() -> PackedStringArray:
+	return TrenchDotParser.prefabs(model, path)
+
 func pending() -> bool:
 	return _full or _environment or not (_groups.is_empty() and _entities.is_empty() and _terrains.is_empty() and _scatters.is_empty() and _loose.is_empty() and _drag_nodes_needed.is_empty())
 

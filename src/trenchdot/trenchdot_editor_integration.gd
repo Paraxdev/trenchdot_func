@@ -8,7 +8,8 @@ class_name TrenchDotEditorIntegration extends Node
 ## [code]status[/code] (project, Godot version, pid, the edited scene and its maps with their build epoch),
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds of the edited scene, naming the
 ## background scene tabs that use the map too, which build a missed save when shown, and what the builds could not
-## find, see [method build_summary]), [code]focus[/code], [code]export_game_config[/code], [code]scan[/code] (see
+## find, see [method build_summary], a saved prefab also rebuilds the maps that use it, see
+## [method rebuild_prefab_users]), [code]focus[/code], [code]export_game_config[/code], [code]scan[/code] (see
 ## [method scan]), [code]play[/code] (see [method play]), and for live mode
 ## [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
@@ -313,7 +314,9 @@ func _handle(msg: Dictionary) -> Dictionary:
 			return status()
 		"map_saved":
 			_sessions.erase(path_key(path))
-			return built_reply(path, rebuild_maps(path), true)
+			var reports := rebuild_maps(path)
+			reports.append_array(rebuild_prefab_users(path))
+			return built_reply(path, reports, true)
 		"build":
 			_sessions.erase(path_key(path))
 			return built_reply(path, rebuild_maps(path, str(msg.get("text", ""))), false)
@@ -488,6 +491,45 @@ static func build_summary(reports: Array) -> Dictionary:
 	if not warnings.is_empty():
 		out["warnings"] = Array(warnings)
 	return out
+
+## Rebuilds the maps of the edited scene whose map file instances [param path], directly or through other prefabs,
+## since the scene still shows the prefab as it was before the save. Those of background scene tabs build when the tab
+## is shown, and live sessions build in full once edits pause, see [method queue_prefab_users]. Returns the build
+## report of each map built now.
+func rebuild_prefab_users(path: String) -> Array[Dictionary]:
+	queue_prefab_users(path)
+	var target := path_key(path)
+	var users := {}
+	var reports: Array[Dictionary] = []
+	var shown := EditorInterface.get_edited_scene_root()
+	for root: Node in EditorInterface.get_open_scene_roots():
+		for map in maps_under(root):
+			var file := resolved_map_path(map)
+			var key := path_key(file)
+			if key == target or _sessions.has(key):
+				continue
+			if not users.has(key):
+				var model: Variant = TrenchDotTdmFile.read(file)["map"]
+				users[key] = model is Dictionary and Array(TrenchDotParser.prefabs(model, file)).any(func(p: String) -> bool: return path_key(p) == target)
+			if not users[key]:
+				continue
+			if root == shown:
+				reports.append(map.build())
+			else:
+				var missed: Dictionary = _waiting.get_or_add(root.get_instance_id(), {})
+				missed[key] = file
+	if not reports.is_empty():
+		EditorInterface.mark_scene_as_unsaved()
+		print("[TrenchDot] rebuilt %d map(s) that instance %s" % [reports.size(), path])
+	return reports
+
+## Lets every live session whose map instances [param path], directly or through other prefabs, build in full, since
+## its scene still shows the prefab as it was before the save.
+func queue_prefab_users(path: String) -> void:
+	var target := path_key(path)
+	for session: TrenchDotLiveSession in _sessions.values():
+		if Array(session.prefabs()).any(func(p: String) -> bool: return path_key(p) == target):
+			session.queue_full_build()
 
 ## [param reply] to a live event, with [code]unresolved[/code] naming the classes the step [param session] just took
 ## built without a definition when there are any, see [method TrenchDotLiveSession.take_unresolved], and
