@@ -11,6 +11,14 @@ class_name TrenchDotProp extends Node3D
 ## Set while a [FuncGodotMap] builds, whose report warns once per missing model instead.
 static var quiet_missing := false
 
+func _ready() -> void:
+	# Scenes built before the build owned the model and collision were saved without them.
+	if get_children().any(func(c: Node) -> bool: return c.has_meta(&"td_prop_generated")):
+		return
+	var path := TrenchDotBuild.map_resource_path(model, TrenchDotBuild.MODEL_FILES)
+	if path != "" and ResourceLoader.exists(path):
+		rebuild()
+
 func _func_godot_apply_properties(properties: Dictionary) -> void:
 	model = str(properties.get("model", model))
 	model_node = str(properties.get("model_node", model_node)).strip_edges()

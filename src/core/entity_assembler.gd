@@ -395,9 +395,16 @@ func attach_entity(entity_node: Node, entity_data: _EntityData, parent: Node, sc
 	# reads global_position, global_transform or get_tree(): only add_child gives a node a parent to read those
 	# from, and owner assignment below only needs the node to be a descendant, not to be inside the tree yet.
 	entity_data.node = entity_node
+	var before := entity_node.get_children()
 	apply_entity_properties(entity_node, entity_data)
+	# Children a script adds while its properties are applied, like a prop's model, have no owner to take yet, and an
+	# unowned node is not saved with the scene. Children _ready() adds next stay unowned, it adds them on every load.
+	var made := entity_node.get_children().filter(func(c: Node) -> bool: return not c in before)
 	parent.add_child(entity_node)
 	entity_node.owner = scene_root
+	for child: Node in made:
+		if is_instance_valid(child) and child.get_parent() == entity_node and not child.owner:
+			TrenchDotBuild.set_owner_recursive(child, scene_root)
 	if entity_data.mesh_instance:
 		entity_data.mesh_instance.owner = scene_root
 	for shape in entity_data.collision_shapes:
