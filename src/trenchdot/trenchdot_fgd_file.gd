@@ -41,7 +41,17 @@ func pack_fgd() -> FuncGodotFGDFile:
 	_pack = load(pack_fgd_path) as FuncGodotFGDFile
 	_pack_path = pack_fgd_path
 	_pack_version = TrenchDotBuild.pack_files_version
+	if _pack and Engine.is_editor_hint():
+		_reload_broken_scripts(_pack)
 	return _pack
+
+## Compiles the pack's entity scripts again that failed to, like those of an older pack that Godot loaded before it
+## registered the classes they use. Godot keeps such a script broken until a restart otherwise.
+static func _reload_broken_scripts(pack: FuncGodotFGDFile) -> void:
+	for def in pack.get_fgd_classes():
+		var script: Script = def.get(&"script_class")
+		if script and not script.can_instantiate():
+			script.reload(true)
 
 ## Whether the editor's filesystem lists [param path]. Starts a scan when it does not, and gives up waiting for a file
 ## that one scan did not list, like one in a folder Godot ignores.
