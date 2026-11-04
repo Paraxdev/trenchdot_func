@@ -18,6 +18,13 @@ static func available() -> bool:
 static func installed() -> bool:
 	return FileAccess.file_exists(DIR.path_join(MANIFEST))
 
+## Writes the template's .gdignore when it is missing, as after unpacking the addon without hidden files, which makes
+## Godot load every pack class twice. Returns whether it wrote one.
+static func hide_template(template := TEMPLATE) -> bool:
+	if not FileAccess.file_exists(template.path_join(MANIFEST)) or FileAccess.file_exists(template.path_join(".gdignore")):
+		return false
+	return FileAccess.open(template.path_join(".gdignore"), FileAccess.WRITE) != null
+
 static func classnames() -> PackedStringArray:
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(TEMPLATE.path_join(MANIFEST)))
 	var out := PackedStringArray()

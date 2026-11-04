@@ -34,6 +34,10 @@ func _enter_tree() -> void:
 	
 	add_custom_type("FuncGodotMap", "Node3D", preload("res://addons/func_godot/src/map/func_godot_map.gd"), null)
 
+	if TrenchDotEntityPack.hide_template():
+		push_warning("[TrenchDot] %s had no .gdignore, so Godot saw the Gameplay pack template next to the project's copy. Wrote it again." % TrenchDotEntityPack.TEMPLATE)
+		EditorInterface.get_resource_filesystem().scan()
+
 	trenchdot = TrenchDotEditorIntegration.new()
 	trenchdot.name = "TrenchDot"
 	trenchdot.plugin = self
