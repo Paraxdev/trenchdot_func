@@ -17,6 +17,9 @@ var map_file := ""
 ## The map settings the build used and their Entity Fgd, by path. Empty for resources that were never saved.
 var map_settings := ""
 var entity_fgd := ""
+## The map settings the func_godot/default_map_settings project setting names, when the map node holds the addon's own
+## ones instead, which it stored when it was added.
+var project_map_settings := ""
 ## Why the build stopped early, empty when it finished.
 var error := ""
 ## [code]{step, ms}[/code] in build order.
@@ -163,6 +166,8 @@ func count_vertices(map_node: Node) -> void:
 ## entities or faces share it, and one per logic_script with code. The TrenchDot editor shows them after a save.
 func warnings() -> PackedStringArray:
 	var out := PackedStringArray()
+	if project_map_settings != "":
+		out.append("the map node of %s uses the addon's default map settings, not %s from Project Settings. Clear its Map Settings in the Inspector to follow the project setting." % [map_file, project_map_settings])
 	if not missing_classes.is_empty():
 		out.append(_missing_classes_warning())
 	for script in map_scripts:

@@ -318,14 +318,14 @@ func _translate(ids: Array, offset: Vector3) -> void:
 		for id in moved:
 			var generated: Node3D = by_id.get(id) as Node3D
 			if generated:
-				_move(generated, offset * map.map_settings.scale_factor)
+				_move(generated, offset * map.get_map_settings().scale_factor)
 			else:
 				_mark(id, {})
 		var world := map.get_node_or_null(WORLD_NODE)
 		for id in dragged_now:
 			var drag_node: Node3D = world.get_node_or_null(_drag_name(id)) as Node3D if world else null
 			if drag_node:
-				_move(drag_node, offset * map.map_settings.scale_factor)
+				_move(drag_node, offset * map.get_map_settings().scale_factor)
 			else:
 				_drag_nodes_needed[id] = true
 
@@ -399,7 +399,7 @@ static func _free(node: Node) -> void:
 
 ## The generated node children of [param id] go under: its nearest layer or group node, or the map.
 func _parent_node(map: FuncGodotMap, id: int) -> Node:
-	if not map.map_settings.use_groups_hierarchy:
+	if not map.get_map_settings().use_groups_hierarchy:
 		return map
 	var groups := TrenchDotBuild.groups_by_id(map)
 	var n := int(_parents.get(id, -1))
@@ -410,7 +410,7 @@ func _parent_node(map: FuncGodotMap, id: int) -> Node:
 	return map
 
 func _sync_group(map: FuncGodotMap, id: int) -> void:
-	if not map.map_settings.use_groups_hierarchy:
+	if not map.get_map_settings().use_groups_hierarchy:
 		return
 	var existing: Node = TrenchDotBuild.groups_by_id(map).get(id)
 	var node: Dictionary = _nodes.get(id, {})
@@ -434,10 +434,10 @@ func _map_with(children: Array) -> Dictionary:
 	return { "format": TrenchDotParser.FORMAT_NAME, "properties": model.get("properties", {}), "layers": [{ "type": "layer", "id": 0, "name": "", "children": children }] }
 
 func _generate(map: FuncGodotMap, entities: Array[FuncGodotData.EntityData]) -> FuncGodotEntityAssembler:
-	var generator := FuncGodotGeometryGenerator.new(map.map_settings, map.hyperplane_size)
+	var generator := FuncGodotGeometryGenerator.new(map.get_map_settings(), map.hyperplane_size)
 	generator.map_path = path
 	generator.build(map.build_flags, entities)
-	var assembler := FuncGodotEntityAssembler.new(map.map_settings)
+	var assembler := FuncGodotEntityAssembler.new(map.get_map_settings())
 	assembler.build_flags = map.build_flags
 	return assembler
 
@@ -466,7 +466,7 @@ func _rebuild_entity(map: FuncGodotMap, id: int, old: Node) -> void:
 	if node.is_empty() or node.get("type") != "entity" or _omitted(id):
 		_free(old)
 		return
-	var parse_data := FuncGodotParser.new().parse_tdm(_map_with([node]), map.map_settings, path)
+	var parse_data := FuncGodotParser.new().parse_tdm(_map_with([node]), map.get_map_settings(), path)
 	if parse_data.entities.size() < 2:
 		_free(old)
 		return
@@ -477,14 +477,14 @@ func _rebuild_terrain(map: FuncGodotMap, id: int, old: Node) -> void:
 	var node: Dictionary = _nodes.get(id, {})
 	if node.get("type") != "terrain" or _omitted(id):
 		return
-	TrenchDotTerrain.build_one(map, _parent_node(map, id), node, Vector3.ZERO, id, map.map_settings)
+	TrenchDotTerrain.build_one(map, _parent_node(map, id), node, Vector3.ZERO, id, map.get_map_settings())
 
 func _rebuild_scatter(map: FuncGodotMap, id: int, old: Node) -> void:
 	_free(old)
 	var node: Dictionary = _nodes.get(id, {})
 	if node.get("type") != "scatter" or _omitted(id):
 		return
-	TrenchDotScatter.build_one(map, _parent_node(map, id), node, Transform3D.IDENTITY, id, map.map_settings)
+	TrenchDotScatter.build_one(map, _parent_node(map, id), node, Transform3D.IDENTITY, id, map.get_map_settings())
 
 func _rebuild_environment(map: FuncGodotMap) -> void:
 	for child in map.get_children():
@@ -508,7 +508,7 @@ static func _update_terrain_offset(terrain: TrenchDotTerrain) -> void:
 #region chunked worldspawn
 
 func _chunk_units() -> float:
-	var settings: FuncGodotMapSettings = maps[0].map_settings if not maps.is_empty() and is_instance_valid(maps[0]) else null
+	var settings: FuncGodotMapSettings = maps[0].get_map_settings() if not maps.is_empty() and is_instance_valid(maps[0]) else null
 	var scale := settings.scale_factor if settings else 1.0 / 32.0
 	return float(ProjectSettings.get_setting(SETTING_CHUNK_SIZE, DEFAULT_CHUNK_SIZE)) / maxf(scale, 1e-9)
 
@@ -594,7 +594,7 @@ func _chunk_entities(map: FuncGodotMap, cells: Array) -> Dictionary:
 		if children.is_empty():
 			out[cell] = null
 			continue
-		var parse_data := FuncGodotParser.new().parse_tdm(_map_with(children), map.map_settings, path)
+		var parse_data := FuncGodotParser.new().parse_tdm(_map_with(children), map.get_map_settings(), path)
 		var world: FuncGodotData.EntityData = parse_data.entities[0] if not parse_data.entities.is_empty() else null
 		if world and world.brushes.is_empty():
 			world = null
@@ -612,7 +612,7 @@ func _attach_world_part(map: FuncGodotMap, world: Node3D, data: FuncGodotData.En
 	_free(world.get_node_or_null(node_name))
 	if not data:
 		return
-	var assembler := FuncGodotEntityAssembler.new(map.map_settings)
+	var assembler := FuncGodotEntityAssembler.new(map.get_map_settings())
 	assembler.build_flags = map.build_flags
 	var node := assembler.attach_entity(assembler.generate_entity_node(data, 0), data, world, TrenchDotBuild.scene_owner(map))
 	if node:
@@ -671,7 +671,7 @@ func _update_world(live: Array[FuncGodotMap]) -> void:
 				_free(child)
 		for id in _drag_nodes_needed:
 			if _dragged.has(id) and _nodes.has(id):
-				var parse_data := FuncGodotParser.new().parse_tdm(_map_with([_nodes[id]]), map.map_settings, path)
+				var parse_data := FuncGodotParser.new().parse_tdm(_map_with([_nodes[id]]), map.get_map_settings(), path)
 				var data: FuncGodotData.EntityData = parse_data.entities[0]
 				var list: Array[FuncGodotData.EntityData] = [data]
 				_generate(map, list)

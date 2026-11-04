@@ -489,7 +489,12 @@ static func map_vector(value: Variant, units_per_meter: float = 32.0) -> Vector3
 static func units_per_meter(node: Node) -> float:
 	var n := node
 	while n:
-		if n is FuncGodotMap and n.map_settings:
-			return n.map_settings.inverse_scale_factor
+		# Note: the scale is kept on the node, since a game exported with only selected scenes and their dependencies
+		# leaves out the project's default map settings, which the scene does not name.
+		if n is FuncGodotMap and not n.map_settings and n.has_meta(FuncGodotMap.UNITS_META):
+			return float(n.get_meta(FuncGodotMap.UNITS_META))
+		var settings: FuncGodotMapSettings = n.get_map_settings() if n is FuncGodotMap else null
+		if settings:
+			return settings.inverse_scale_factor
 		n = n.get_parent()
 	return 32.0

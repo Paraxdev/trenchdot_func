@@ -12,7 +12,8 @@ static func report(root: Node3D, map: FuncGodotMap, agent: Dictionary) -> Dictio
 	var nav := TrenchDotNav.bake(root, profile)
 	if not nav:
 		return { "ok": false, "error": "the scene could not be baked, it has to be open in the Godot editor" }
-	var units := map.map_settings.inverse_scale_factor if map.map_settings else 32.0
+	var settings := map.get_map_settings()
+	var units := settings.inverse_scale_factor if settings else 32.0
 	var to_map := map.global_transform.affine_inverse() * root.global_transform
 	var vertices := []
 	for v in nav.vertices:

@@ -257,7 +257,8 @@ func write_sidecar() -> String:
 	var path := sidecar_path(map)
 	if path == "":
 		return ""
-	var units := map.map_settings.inverse_scale_factor if map.map_settings else 32.0
+	var settings := map.get_map_settings()
+	var units := settings.inverse_scale_factor if settings else 32.0
 	var entry := sidecar_entry(units)
 	var overlays := []
 	if FileAccess.file_exists(path):

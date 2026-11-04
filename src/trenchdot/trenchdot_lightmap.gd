@@ -200,8 +200,9 @@ static func build(map_node: Node3D, lightmap: Dictionary, entities: Array) -> Li
 		data.add_user(gi.get_path_to(mi), Rect2(0, 0, 1, 1), 0, -1)
 	if not lightmap.get("probes", {}).is_empty():
 		var scale := 1.0 / 32.0
-		if map_node is FuncGodotMap and map_node.map_settings:
-			scale = map_node.map_settings.scale_factor
+		var settings: FuncGodotMapSettings = map_node.get_map_settings() if map_node is FuncGodotMap else null
+		if settings:
+			scale = settings.scale_factor
 		data.call("_set_probe_data", probe_data(lightmap["probes"], scale))
 	gi.light_data = data
 

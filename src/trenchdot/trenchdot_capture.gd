@@ -7,7 +7,8 @@ const TIMEOUT_MSEC := 20000
 
 ## Global transform of a camera at [param position] looking along [param forward], both in the map's units and axes.
 static func camera_transform(map: FuncGodotMap, position: Vector3, forward: Vector3) -> Transform3D:
-	var scale := map.map_settings.scale_factor if map.map_settings else 1.0 / 32.0
+	var settings := map.get_map_settings()
+	var scale := settings.scale_factor if settings else 1.0 / 32.0
 	var xform := map.global_transform
 	var dir := (xform.basis * forward).normalized()
 	var up := Vector3.UP if absf(dir.dot(Vector3.UP)) < 0.999 else Vector3.FORWARD

@@ -9,6 +9,13 @@ class_name FuncGodotMap extends Node3D
 ## the correct [FuncGodotMapSettings].
 
 const _SIGNATURE: String = "[MAP]"
+## Project setting naming the map settings of map nodes that have none.
+const SETTING_DEFAULT_MAP_SETTINGS := "func_godot/default_map_settings"
+## The addon's own map settings, the project setting's default.
+const ADDON_MAP_SETTINGS := "res://addons/func_godot/func_godot_default_map_settings.tres"
+## The units per meter a map node without [member map_settings] was built with, see
+## [method TrenchDotIO.units_per_meter].
+const UNITS_META := &"_td_units_per_meter"
 
 ## Bitflag settings that control various aspects of the build process.
 enum BuildFlags {
@@ -43,8 +50,10 @@ signal warmed_up
 # Map path used by code. Do it this way to support both global and local paths.
 var _map_file_internal: String = ""
 
-## Map settings resource that defines map build scale, textures location, entity definitions, and more.
-@export var map_settings: FuncGodotMapSettings = load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres"))
+## Map settings resource that defines map build scale, textures location, entity definitions, and more. Left empty,
+## the map builds with the one the [code]func_godot/default_map_settings[/code] project setting names, see
+## [method get_map_settings].
+@export var map_settings: FuncGodotMapSettings
 
 @export_category("Build")
 ## [enum BuildFlags] that can affect certain aspects of the build process.
@@ -73,6 +82,15 @@ var build_report: Dictionary = {}
 func _ready() -> void:
 	if get_child_count() > 0:
 		_warm_up()
+
+## The map settings a build uses: [member map_settings], or [method default_map_settings] when it is empty.
+func get_map_settings() -> FuncGodotMapSettings:
+	return map_settings if map_settings else default_map_settings()
+
+## The map settings the [code]func_godot/default_map_settings[/code] project setting names, null when it names none.
+static func default_map_settings() -> FuncGodotMapSettings:
+	var path := str(ProjectSettings.get_setting(SETTING_DEFAULT_MAP_SETTINGS, ADDON_MAP_SETTINGS))
+	return load(path) as FuncGodotMapSettings if path != "" and ResourceLoader.exists(path) else null
 
 func _warm_up() -> void:
 	if Engine.is_editor_hint() or not warm_up_shaders or not is_inside_tree():
@@ -166,10 +184,20 @@ func _build(text: String) -> TrenchDotBuildReport:
 		report.error = "verification failed: %s" % error_string(verify_err)
 		return report
 
-	if not map_settings:
-		push_warning("Map assembler does not have a map settings provided and will use default map settings.")
-		map_settings = load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres"))
-	report.use_settings(map_settings)
+	var settings := get_map_settings()
+	if not settings:
+		fail_build("No map settings: set Map Settings or the %s project setting." % SETTING_DEFAULT_MAP_SETTINGS, true)
+		report.error = "no map settings"
+		return report
+	report.use_settings(settings)
+	# Map nodes used to store the default settings they were added with, which the project setting no longer changes.
+	var project_settings := str(ProjectSettings.get_setting(SETTING_DEFAULT_MAP_SETTINGS, ADDON_MAP_SETTINGS))
+	if map_settings and map_settings.resource_path == ADDON_MAP_SETTINGS and project_settings != ADDON_MAP_SETTINGS and ResourceLoader.exists(project_settings):
+		report.project_map_settings = project_settings
+	if map_settings:
+		remove_meta(UNITS_META)
+	else:
+		set_meta(UNITS_META, settings.inverse_scale_factor)
 
 	# Parse and collect map data
 	var parser := FuncGodotParser.new()
@@ -180,9 +208,9 @@ func _build(text: String) -> TrenchDotBuildReport:
 		parser.declare_step.connect(FuncGodotUtil.print_profile_info.bind(parser._SIGNATURE))
 	var parse_data: FuncGodotData.ParseData
 	if text != "":
-		parse_data = parser.parse_tdm(text, map_settings, _map_file_internal)
+		parse_data = parser.parse_tdm(text, settings, _map_file_internal)
 	else:
-		parse_data = parser.parse_map_data(_map_file_internal, map_settings)
+		parse_data = parser.parse_map_data(_map_file_internal, settings)
 	# Lets a live session tell whether the scene still matches the map it was built from.
 	if text != "" or Engine.is_editor_hint():
 		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))
@@ -198,7 +226,7 @@ func _build(text: String) -> TrenchDotBuildReport:
 	parser = null
 	
 	# Retrieve geometry
-	var generator := FuncGodotGeometryGenerator.new(map_settings, hyperplane_size)
+	var generator := FuncGodotGeometryGenerator.new(settings, hyperplane_size)
 	generator.size_overrides = parse_data.texture_sizes
 	generator.map_path = _map_file_internal
 	generator.declare_step.connect(report.step)
@@ -212,10 +240,10 @@ func _build(text: String) -> TrenchDotBuildReport:
 		fail_build("Geometry generation failed: %s" % error_string(generate_error))
 		report.error = "geometry generation failed: %s" % error_string(generate_error)
 		return report
-	report.check_textures(entities, generator.texture_materials, map_settings)
+	report.check_textures(entities, generator.texture_materials, settings)
 
 	# Assemble entities and groups
-	var assembler := FuncGodotEntityAssembler.new(map_settings)
+	var assembler := FuncGodotEntityAssembler.new(settings)
 	assembler.declare_step.connect(report.step)
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nENTITY ASSEMBLER")
@@ -230,14 +258,14 @@ func _build(text: String) -> TrenchDotBuildReport:
 	TrenchDotProbes.fit_volumes(entities)
 
 	report.step("Building terrains")
-	TrenchDotTerrain.build_all(self, parse_data.terrains, map_settings)
+	TrenchDotTerrain.build_all(self, parse_data.terrains, settings)
 	report.step("Building scatter sets")
-	TrenchDotScatter.build_all(self, parse_data.scatters, map_settings)
+	TrenchDotScatter.build_all(self, parse_data.scatters, settings)
 	report.step("Building the environment")
 	TrenchDotEnvironment.build(self, entities[0].properties)
 	# The chunk streamer goes in last, it groups everything built above.
 	report.step("Building the chunk streamer")
-	var streamer := TrenchDotStreamer.build(self, entities[0].properties, map_settings)
+	var streamer := TrenchDotStreamer.build(self, entities[0].properties, settings)
 	if streamer:
 		streamer.rebuild()
 	# After the streamer, which splits meshes into the pieces the lightmap has to know.
