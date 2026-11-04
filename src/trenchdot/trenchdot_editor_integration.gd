@@ -7,7 +7,8 @@ class_name TrenchDotEditorIntegration extends Node
 ## [code]seq[/code]. Events:
 ## [code]status[/code] (project, Godot version, pid, the edited scene and its maps with their build epoch),
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds of the edited scene, naming the
-## background scene tabs that use the map too, which build a missed save when shown), [code]focus[/code],
+## background scene tabs that use the map too, which build a missed save when shown, and what the builds could not
+## find, see [method build_summary]), [code]focus[/code],
 ## [code]export_game_config[/code], and for live mode [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
 ## (see [TrenchDotLiveSession]), [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
@@ -27,6 +28,8 @@ const MAX_PORT := 65535
 const LISTEN_RETRY_MSEC := 3000
 ## A peer whose unfinished line grows past this is dropped. The map texts TrenchDot sends stay far below it.
 const MAX_BUFFER := 64 << 20
+## Build warnings a save or build reply carries at most.
+const MAX_REPLY_WARNINGS := 20
 
 var plugin: EditorPlugin
 var _server: TCPServer
@@ -376,10 +379,12 @@ static func scene_name(root: Node) -> String:
 		return ""
 	return root.scene_file_path if root.scene_file_path != "" else String(root.name)
 
-## Reply to a save or build that rebuilt [param rebuilt] maps in the scene Godot shows. It names that scene and the
-## background scene tabs that use [param path] too. With [param wait] those build the saved file when they are shown.
-func built_reply(path: String, rebuilt: int, wait: bool) -> Dictionary:
-	var reply := { "ok": true, "rebuilt": rebuilt }
+## Reply to a save or build whose [param reports] are those of the maps it rebuilt in the scene Godot shows, see
+## [method build_summary]. It names that scene and the background scene tabs that use [param path] too. With
+## [param wait] those build the saved file when they are shown.
+func built_reply(path: String, reports: Array, wait: bool) -> Dictionary:
+	var reply := { "ok": true, "rebuilt": reports.size() }
+	reply.merge(build_summary(reports))
 	if not Engine.is_editor_hint():
 		return reply
 	var shown := EditorInterface.get_edited_scene_root()
@@ -395,6 +400,34 @@ func built_reply(path: String, rebuilt: int, wait: bool) -> Dictionary:
 	if not waiting.is_empty():
 		reply["waiting"] = waiting
 	return reply
+
+## What the TrenchDot editor shows after a save or build from the build [param reports]:
+## [code]missing_classes[/code] (classnames without a definition in any of them), [code]settings[/code] (the map
+## settings they used) and [code]warnings[/code] (the first [constant MAX_REPLY_WARNINGS] report warnings). Each key
+## only when it has entries.
+static func build_summary(reports: Array) -> Dictionary:
+	var missing := {}
+	var settings := {}
+	var warnings := PackedStringArray()
+	for report in reports:
+		if not report is Dictionary:
+			continue
+		for classname in report.get("missing_classes", []):
+			missing[str(classname)] = true
+		if str(report.get("map_settings", "")) != "":
+			settings[str(report["map_settings"])] = true
+		for line in report.get("warnings", []):
+			var one := str(line).replace("\n", " ")
+			if warnings.size() < MAX_REPLY_WARNINGS and not one in warnings:
+				warnings.append(one)
+	var out := {}
+	for pair in [["missing_classes", missing.keys()], ["settings", settings.keys()]]:
+		if not pair[1].is_empty():
+			pair[1].sort()
+			out[pair[0]] = pair[1]
+	if not warnings.is_empty():
+		out["warnings"] = Array(warnings)
+	return out
 
 ## Rebuilds the maps that were saved while the scene tab Godot now shows was in the background.
 func build_waiting() -> void:
@@ -490,19 +523,17 @@ func _on_map_built(map: FuncGodotMap) -> void:
 		_bump(path_key(resolved_map_path(map)))
 
 ## Fully rebuilds every FuncGodotMap in the edited scene that uses [param path], from [param text] when given (unsaved
-## edits) or from the file. Returns how many were rebuilt. Only nodes inside the FuncGodotMap nodes are replaced.
-func rebuild_maps(path: String, text: String = "") -> int:
+## edits) or from the file. Returns the build report of each. Only nodes inside the FuncGodotMap nodes are replaced.
+func rebuild_maps(path: String, text: String = "") -> Array[Dictionary]:
 	var fs := EditorInterface.get_resource_filesystem()
 	var local := ProjectSettings.localize_path(path)
 	if local.begins_with("res://") and fs and text == "":
 		fs.update_file(local)
 	var maps := maps_for(path)
+	var reports: Array[Dictionary] = []
 	for map in maps:
-		if text != "":
-			map.build_from_text(text)
-		else:
-			map.build()
+		reports.append(map.build_from_text(text) if text != "" else map.build())
 	if not maps.is_empty():
 		EditorInterface.mark_scene_as_unsaved()
 		print("[TrenchDot] rebuilt %d map(s) from %s" % [maps.size(), "unsaved edits of " + path if text != "" else path])
-	return maps.size()
+	return reports

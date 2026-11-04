@@ -143,6 +143,7 @@ func build_from_text(text: String) -> Dictionary:
 func _report(report: TrenchDotBuildReport) -> Dictionary:
 	report.finish()
 	report.take_refused_paths()
+	report.warn()
 	build_report = report.to_dictionary()
 	if build_flags & BuildFlags.PRINT_REPORT:
 		report.print_report()
@@ -168,6 +169,7 @@ func _build(text: String) -> TrenchDotBuildReport:
 	if not map_settings:
 		push_warning("Map assembler does not have a map settings provided and will use default map settings.")
 		map_settings = load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres"))
+	report.use_settings(map_settings)
 
 	# Parse and collect map data
 	var parser := FuncGodotParser.new()
@@ -248,7 +250,6 @@ func _build(text: String) -> TrenchDotBuildReport:
 	TrenchDotOverlay.notify_built(self)
 	report.finish()
 	report.count_vertices(self)
-	report.warn()
 
 	time_elapsed = Time.get_ticks_msec() - time_elapsed
 

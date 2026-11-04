@@ -4,7 +4,7 @@ class_name TrenchDotBuildReport extends RefCounted
 ## targets that match no node in the map, logic_script entities that carry GDScript, and resource paths it refused to
 ## load because they point outside the project or at the wrong kind of file. [method FuncGodotMap.build]
 ## returns it as [method to_dictionary] and keeps it in [member FuncGodotMap.build_report]. The
-## [code]Print Build Report[/code] build flag prints it.
+## [code]Print Build Report[/code] build flag prints it, and [method warn] pushes its [method warnings].
 
 ## Tool texture names the TrenchDot editor uses unless the game config names them otherwise.
 const EDITOR_TOOL_TEXTURES := { "clip": "special/clip", "skip": "special/skip", "origin": "special/origin", "sky": "special/sky" }
@@ -14,6 +14,9 @@ const _CONFIG_SETTING := "trenchdot/game_config"
 const _DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
 
 var map_file := ""
+## The map settings the build used and their Entity Fgd, by path. Empty for resources that were never saved.
+var map_settings := ""
+var entity_fgd := ""
 ## Why the build stopped early, empty when it finished.
 var error := ""
 ## [code]{step, ms}[/code] in build order.
@@ -35,6 +38,8 @@ var map_scripts: PackedStringArray = []
 ## Paths the map names that [method TrenchDotBuild.map_resource_path] refused.
 var refused_paths: PackedStringArray = []
 
+# Whether the Entity Fgd brings the installed Gameplay entities pack, through a TrenchDotFGDFile.
+var _fgd_has_pack := false
 var _start := 0
 var _step := ""
 var _step_start := 0
@@ -54,18 +59,24 @@ func step(name: String) -> void:
 func finish() -> void:
 	step("")
 
+## Notes the map settings the build uses, which the warning about missing definitions names.
+func use_settings(settings: FuncGodotMapSettings) -> void:
+	if not settings:
+		return
+	map_settings = settings.resource_path
+	entity_fgd = settings.entity_fgd.resource_path if settings.entity_fgd else ""
+	_fgd_has_pack = _includes_pack(settings.entity_fgd, [])
+
 ## Starts collecting the paths [method TrenchDotBuild.map_resource_path] refuses, until [method take_refused_paths].
 func collect_refused_paths() -> void:
 	TrenchDotBuild.refused_paths.clear()
 	TrenchDotBuild.collecting_refused = true
 
-## Keeps the refused paths and warns once for each.
+## Keeps the refused paths, [method warn] then warns once for each.
 func take_refused_paths() -> void:
 	TrenchDotBuild.collecting_refused = false
 	refused_paths = PackedStringArray(TrenchDotBuild.refused_paths.keys())
 	TrenchDotBuild.refused_paths.clear()
-	for path in refused_paths:
-		push_warning("[TrenchDot] the map names %s, which is not loaded: maps may only name models, images, sounds, materials and prefabs inside the project" % path)
 
 func time_ms() -> float:
 	return (Time.get_ticks_usec() - _start) / 1000.0 if steps.is_empty() else steps.reduce(func(sum, s): return sum + s["ms"], 0.0)
@@ -147,23 +158,61 @@ func count_vertices(map_node: Node) -> void:
 				vertices += mesh.surface_get_array_len(s)
 		stack.append_array(n.get_children())
 
-## One warning per missing model, material and tool texture, however many entities or faces share it, and one per
-## logic_script with code.
-func warn() -> void:
+## Every warning of the build, one line each without the [code][TrenchDot][/code] prefix [method warn] adds: one
+## for all classes without a definition, one per missing model, material, tool texture and refused path, however many
+## entities or faces share it, and one per logic_script with code. The TrenchDot editor shows them after a save.
+func warnings() -> PackedStringArray:
+	var out := PackedStringArray()
+	if not missing_classes.is_empty():
+		out.append(_missing_classes_warning())
 	for script in map_scripts:
-		push_warning("[TrenchDot] logic_script %s runs GDScript stored in the map when the scene plays" % script)
+		out.append("logic_script %s runs GDScript stored in the map when the scene plays" % script)
 	for model in missing_models:
 		var users: Array = missing_models[model]
 		var more: String = " and %d more" % (users.size() - 1) if users.size() > 1 else ""
-		push_warning("[TrenchDot] model %s not found, used by %s%s" % [model, users[0], more])
+		out.append("model %s not found, used by %s%s" % [model, users[0], more])
 	for name in missing_materials:
-		push_warning("[TrenchDot] no material or texture for %s, its faces show the placeholder texture" % name)
+		out.append("no material or texture for %s, its faces show the placeholder texture" % name)
 	for texture in unknown_tool_textures:
-		push_warning("[TrenchDot] faces use the tool texture %s, but the map settings' %s is not %s, so they build as visible faces" % [texture, unknown_tool_textures[texture], texture])
+		out.append("faces use the tool texture %s, but the map settings' %s is not %s, so they build as visible faces" % [texture, unknown_tool_textures[texture], texture])
+	for path in refused_paths:
+		out.append("the map names %s, which is not loaded: maps may only name models, images, sounds, materials and prefabs inside the project" % path)
+	return out
+
+func warn() -> void:
+	for line in warnings():
+		push_warning("[TrenchDot] " + line)
+
+func _missing_classes_warning() -> String:
+	var count := missing_classes.size()
+	var settings := map_settings if map_settings != "" else "the map settings"
+	var fgd := entity_fgd if entity_fgd != "" else "an unsaved FGD"
+	var text := "%d entity %s no definition in %s (Entity Fgd %s): %s. They build as plain nodes without script or collision." % [count, "class has" if count == 1 else "classes have", settings, fgd, ", ".join(missing_classes)]
+	var pack := Array(TrenchDotEntityPack.classnames())
+	var from_pack := Array(missing_classes).filter(func(c): return c in pack)
+	if from_pack.is_empty():
+		return text
+	if not TrenchDotEntityPack.installed():
+		return text + " Install the Gameplay entities pack, it defines %s." % ", ".join(from_pack)
+	if not _fgd_has_pack and entity_fgd.begins_with("res://addons/"):
+		return text + " The Gameplay entities pack is installed, but %s is an FGD of the addon, which does not bring it. Set the Entity Fgd of %s to the FGD your game config uses." % [entity_fgd, settings]
+	if not _fgd_has_pack:
+		return text + " The Gameplay entities pack is installed, but this FGD does not include res://addons/func_godot/fgd/trenchdot_default_fgd.tres, which brings it. Add that to its Base Fgd Files."
+	return text
+
+static func _includes_pack(fgd: FuncGodotFGDFile, seen: Array) -> bool:
+	if not fgd or fgd in seen:
+		return false
+	if fgd is TrenchDotFGDFile:
+		return true
+	seen.append(fgd)
+	return fgd.base_fgd_files.any(func(base): return base is FuncGodotFGDFile and _includes_pack(base, seen))
 
 func to_dictionary() -> Dictionary:
 	return {
 		"map": map_file,
+		"map_settings": map_settings,
+		"entity_fgd": entity_fgd,
 		"error": error,
 		"time_ms": time_ms(),
 		"steps": steps,
@@ -176,6 +225,7 @@ func to_dictionary() -> Dictionary:
 		"unresolved_targets": unresolved_targets,
 		"map_scripts": map_scripts,
 		"refused_paths": refused_paths,
+		"warnings": warnings(),
 	}
 
 func print_report() -> void:
