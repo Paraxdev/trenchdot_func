@@ -8,6 +8,7 @@ class_name TrenchDotGameConfig extends Resource
 ## [code]build[/code] block names the classes Godot builds maps with, see [method build_classes].
 
 const FORMAT_VERSION := 1
+const DEFAULT_OUTPUT := "res://trenchdot_game.json"
 ## Lint lists at most this many classnames per warning.
 const LINT_NAMES := 8
 
@@ -17,7 +18,7 @@ const LINT_NAMES := 8
 @export var fgd_file: FuncGodotFGDFile = preload("res://addons/func_godot/fgd/trenchdot_default_fgd.tres")
 @export var map_settings: FuncGodotMapSettings = preload("res://addons/func_godot/func_godot_default_map_settings.tres")
 ## Written relative to the project, the TrenchDot editor looks for it in the project root.
-@export_file("*.json") var output_path: String = "res://trenchdot_game.json"
+@export_file("*.json") var output_path: String = DEFAULT_OUTPUT
 ## Texture size assumed by the editor when an image cannot be read.
 @export var fallback_texture_size: int = FuncGodotUtil.FALLBACK_TEXTURE_SIZE
 ## Folders searched for C# entity classes ([TrenchDotEntity]) and C# node classes named by FGD entries.
@@ -418,11 +419,14 @@ func export_file() -> Error:
 	for w in lint():
 		push_warning("[TrenchDot] %s" % w)
 	var text := JSON.stringify(build_config(), "  ", false)
-	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	var path := DEFAULT_OUTPUT if output_path == TrenchDotLegacy.GAME_FILE else output_path
+	var file := FileAccess.open(path, FileAccess.WRITE)
 	if not file:
-		push_error("[TrenchDot] cannot write %s" % output_path)
+		push_error("[TrenchDot] cannot write %s" % path)
 		return ERR_FILE_CANT_WRITE
 	file.store_string(text)
 	file.close()
-	print("[TrenchDot] game config exported to ", ProjectSettings.globalize_path(output_path))
+	print("[TrenchDot] game config exported to ", ProjectSettings.globalize_path(path))
+	if path == DEFAULT_OUTPUT and FileAccess.file_exists(TrenchDotLegacy.GAME_FILE):
+		DirAccess.remove_absolute(TrenchDotLegacy.GAME_FILE)
 	return OK

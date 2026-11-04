@@ -24,6 +24,8 @@ func _edit(object: Object) -> void:
 		#func_godot_map_progress_bar.set_visible(visible)
 
 func _enter_tree() -> void:
+	if TrenchDotLegacy.migrate_settings():
+		ProjectSettings.save()
 	map_import_plugin = TrenchDotTdmImportPlugin.new()
 	add_import_plugin(map_import_plugin)
 	legacy_import_plugin = TrenchDotLegacyImportPlugin.new()
