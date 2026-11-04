@@ -42,7 +42,7 @@ signal map_rebuilt(map: FuncGodotMap)
 
 ## True for nodes the map build keeps: overlays and nodes in [constant KEEP_GROUP].
 static func is_kept(node: Node) -> bool:
-	return node is TrenchDotOverlay or node.is_in_group(KEEP_GROUP)
+	return node is TrenchDotOverlay or node.is_in_group(KEEP_GROUP) or node.is_in_group(TrenchDotLegacy.KEEP_GROUP)
 
 ## Number of kept children at the front of [param map], generated nodes go after them.
 static func leading_kept(map: Node) -> int:

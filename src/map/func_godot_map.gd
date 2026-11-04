@@ -79,6 +79,9 @@ var _map_file_internal: String = ""
 ## What the last build made and could not find, see [TrenchDotBuildReport]. [method build] returns it too.
 var build_report: Dictionary = {}
 
+func _enter_tree() -> void:
+	TrenchDotLegacy.upgrade_metadata(self)
+
 func _ready() -> void:
 	if get_child_count() > 0:
 		_warm_up()

@@ -10,6 +10,21 @@ const PACK_DIR := "res://godottrench/entities"
 ## The game config the editor read before trenchdot_game.json.
 const GAME_FILE := "res://godottrench_game.json"
 const PACK_FGD := PACK_DIR + "/gameplay_fgd.tres"
+## Persistent group of nodes under a map that a rebuild keeps.
+const KEEP_GROUP := &"godottrench_keep"
+## Old metadata keys of nodes saved in scenes to the keys that replaced them. A test keeps the new ones in step with
+## the constants that use them.
+const METAS := {
+	&"_gt_id": &"_td_id",
+	&"_gt_group": &"_td_group",
+	&"_gt_source_hash": &"_td_source_hash",
+	&"_gt_definitions": &"_td_definitions",
+	&"_gt_units_per_meter": &"_td_units_per_meter",
+	&"gt_targetname": &"td_targetname",
+	&"gt_transforms": &"td_transforms",
+	&"gt_prop_generated": &"td_prop_generated",
+	&"godottrench_baked": &"trenchdot_baked",
+}
 const _SETTINGS_ROOT := "godottrench/"
 const _DEFAULT_CONFIG := "res://addons/func_godot/game_config/godottrench/godottrench_game_config.tres"
 const _NEW_DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
@@ -40,3 +55,21 @@ static func migrate_settings() -> bool:
 		ProjectSettings.set_setting(old, null)
 		changed = true
 	return changed
+
+## Moves [param key]'s old metadata name to [param key] on [param node], unless the node already has [param key].
+static func upgrade_meta(node: Node, key: StringName) -> void:
+	var old: Variant = METAS.find_key(key)
+	if old != null and node.has_meta(old):
+		if not node.has_meta(key):
+			node.set_meta(key, node.get_meta(old))
+		node.remove_meta(old)
+
+## Renames the old metadata of [param root] and the nodes below it, like scenes saved by GodotTrench carry.
+static func upgrade_metadata(root: Node) -> void:
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for old in node.get_meta_list():
+			if METAS.has(old):
+				upgrade_meta(node, METAS[old])
+		stack.append_array(node.get_children())

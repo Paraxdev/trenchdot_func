@@ -93,6 +93,7 @@ static func _named_nodes(root: Node) -> Dictionary:
 		stack.append_array(TrenchDotOverlay.external_overlays(root))
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
+		TrenchDotLegacy.upgrade_meta(n, TARGETNAME_META)
 		if n.has_meta(TARGETNAME_META):
 			var key := str(n.get_meta(TARGETNAME_META))
 			if not cache.has(key):
