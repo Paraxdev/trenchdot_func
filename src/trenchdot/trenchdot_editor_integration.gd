@@ -11,7 +11,8 @@ class_name TrenchDotEditorIntegration extends Node
 ## find, see [method build_summary]), [code]focus[/code],
 ## [code]export_game_config[/code], and for live mode [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
-## (see [TrenchDotLiveSession]), [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
+## (see [TrenchDotLiveSession], the replies to the first three name the classes built without a definition and the
+## map settings, see [method with_unresolved]), [code]capture {path, camera, width, height, text}[/code] (a PNG of the scene through
 ## a camera, see [TrenchDotCapture]) and [code]walkable {path, agent, text}[/code] (the navigation mesh of the scene,
 ## see [TrenchDotWalkable]).
 
@@ -322,13 +323,13 @@ func _handle(msg: Dictionary) -> Dictionary:
 			if not session.begin(str(msg.get("text", "")), msg.get("content")):
 				return { "ok": false, "error": "invalid map" }
 			_sessions[path_key(path)] = session
-			return { "ok": true, "epoch": _epochs.get(path_key(path), 0) }
+			return with_unresolved({ "ok": true, "epoch": _epochs.get(path_key(path), 0) }, session)
 		"live_delta":
 			var session: TrenchDotLiveSession = _sessions.get(path_key(path))
 			if not session or not session.apply(msg.get("ops", [])):
 				_sessions.erase(path_key(path))
 				return { "ok": false, "resync": true }
-			return { "ok": true, "epoch": _epochs.get(path_key(path), 0) }
+			return with_unresolved({ "ok": true, "epoch": _epochs.get(path_key(path), 0) }, session)
 		"live_end":
 			_sessions.erase(path_key(path))
 			if msg.get("revert", false):
@@ -446,6 +447,16 @@ static func build_summary(reports: Array) -> Dictionary:
 	if not warnings.is_empty():
 		out["warnings"] = Array(warnings)
 	return out
+
+## [param reply] to a live event, with [code]unresolved[/code] naming the classes the step [param session] just took
+## built without a definition when there are any, see [method TrenchDotLiveSession.take_unresolved], and
+## [code]settings[/code] the map settings it builds with.
+static func with_unresolved(reply: Dictionary, session: TrenchDotLiveSession) -> Dictionary:
+	var unresolved := session.take_unresolved()
+	if not unresolved.is_empty():
+		reply["unresolved"] = unresolved
+	reply["settings"] = session.settings()
+	return reply
 
 ## Rebuilds the maps that were saved while the scene tab Godot now shows was in the background.
 func build_waiting() -> void:

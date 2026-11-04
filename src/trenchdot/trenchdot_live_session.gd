@@ -36,6 +36,8 @@ var _scatters: Dictionary = {}
 var _environment := false
 var _full := false
 var _last_change := 0
+## Classnames the last [method begin] or [method apply] built, or queued to build, without a definition.
+var _unresolved: Dictionary = {}
 
 ## Loose brush id to its bounds before the change (null for new brushes), not yet rebuilt.
 var _loose: Dictionary = {}
@@ -67,12 +69,16 @@ func begin(text: String, content: Variant = null) -> bool:
 		var built := int(map.get_meta(TrenchDotBuild.SOURCE_HASH_META, 0))
 		var same_map := built == text_hash or (content != null and built == int(content))
 		if not same_map or not TrenchDotBuild.built_with_current_definitions(map):
-			_full_build(map, text)
+			for classname in _full_build(map, text):
+				_unresolved[str(classname)] = true
+	_note_unresolved(true)
 	return true
 
 ## Applies ops to the model and queues the rebuilds they need. False when they do not fit the model, the editor then
 ## starts over with [method begin].
 func apply(ops: Array) -> bool:
+	_unresolved.clear()
+	var was_full := _full
 	for op in ops:
 		if not op is Dictionary:
 			return false
@@ -92,9 +98,52 @@ func apply(ops: Array) -> bool:
 	# The scene is no longer the full build of the source it names, a session starting on it later builds it again.
 	for map in _live_maps():
 		map.remove_meta(TrenchDotBuild.SOURCE_HASH_META)
+	_note_unresolved(_full and not was_full)
 	_last_change = Time.get_ticks_msec()
 	_mark_scene_unsaved()
 	return true
+
+## The classnames the last [method begin] or [method apply] built without a definition, sorted, and forgets them. For
+## begin these are the classes of every entity of the map that the map settings have no definition for, whether it
+## built the map or found it built already. For apply these are the classes of the entities it queued for a rebuild, or of every entity when it queued a full build,
+## known before the rebuild runs. They build as plain nodes. Full builds the session starts by itself, like those of
+## [method check_definitions], do not count: their build report warns in Godot.
+func take_unresolved() -> Array:
+	var out := _unresolved.keys()
+	out.sort()
+	_unresolved.clear()
+	return out
+
+func _note_unresolved(all: bool) -> void:
+	var classnames := {}
+	for id in (_nodes if all else _entities):
+		if _type(id) == "entity":
+			classnames[str(_nodes[id].get("classname", ""))] = true
+	classnames.erase("")
+	if classnames.is_empty():
+		return
+	for map in _live_maps():
+		var settings := map.get_map_settings()
+		var defs: Dictionary = settings.entity_fgd.get_entity_definitions() if settings and settings.entity_fgd else {}
+		var csharp := {}
+		for classname: String in classnames:
+			# The parser only looks for a C# definition when the FGD has none.
+			if not defs.has(classname) and csharp.is_empty():
+				csharp = TrenchDotCSharp.definitions()
+			var def: Variant = defs.get(classname, csharp.get(classname))
+			if not (def is FuncGodotFGDSolidClass or def is FuncGodotFGDPointClass):
+				_unresolved[classname] = true
+
+## The paths of the map settings the session's maps build with, sorted.
+func settings() -> Array:
+	var paths := {}
+	for map in _live_maps():
+		var settings := map.get_map_settings()
+		if settings and settings.resource_path != "":
+			paths[settings.resource_path] = true
+	var out := paths.keys()
+	out.sort()
+	return out
 
 ## Queues a full build when a map was last fully built with other entity definitions than its map settings hold now.
 ## Live edits only rebuild the entities they touch, this brings the others up to date too.
@@ -161,6 +210,7 @@ func _clear_pending() -> void:
 	_scatters.clear()
 	_environment = false
 	_full = false
+	_unresolved.clear()
 	_loose.clear()
 	_dragged.clear()
 	_drag_nodes_needed.clear()
@@ -398,10 +448,12 @@ func _mark_scene_unsaved() -> void:
 	if Engine.is_editor_hint():
 		Engine.get_singleton(&"EditorInterface").mark_scene_as_unsaved()
 
-func _full_build(map: FuncGodotMap, map_text: String) -> void:
+## Returns the classnames the build had no definition for.
+func _full_build(map: FuncGodotMap, map_text: String) -> Array:
 	building += 1
-	map.build_from_text(map_text)
+	var report := map.build_from_text(map_text)
 	building -= 1
+	return report.get("missing_classes", [])
 
 static func _free(node: Node) -> void:
 	if node and is_instance_valid(node):
