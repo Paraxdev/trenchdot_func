@@ -89,6 +89,9 @@ func apply(ops: Array) -> bool:
 				_environment = true
 			_:
 				return false
+	# The scene is no longer the full build of the source it names, a session starting on it later builds it again.
+	for map in _live_maps():
+		map.remove_meta(TrenchDotBuild.SOURCE_HASH_META)
 	_last_change = Time.get_ticks_msec()
 	_mark_scene_unsaved()
 	return true
