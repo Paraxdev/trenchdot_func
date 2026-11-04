@@ -4,9 +4,12 @@ class_name TrenchDotGameConfig extends Resource
 ## Game configuration for the TrenchDot level editor.
 ##
 ## Exports [code]trenchdot_game.json[/code] with entity definitions from a [FuncGodotFGDFile], texture settings
-## from [FuncGodotMapSettings], and I/O outputs and inputs derived from entity scripts (signals and methods).
+## from [FuncGodotMapSettings], and I/O outputs and inputs derived from entity scripts (signals and methods). Its
+## [code]build[/code] block names the classes Godot builds maps with, see [method build_classes].
 
 const FORMAT_VERSION := 1
+## Lint lists at most this many classnames per warning.
+const LINT_NAMES := 8
 
 @export_tool_button("Export TrenchDot Game Config") var _export_button: Callable = export_file
 
@@ -228,6 +231,27 @@ static func definition_sources(fgd: FuncGodotFGDFile, out: Dictionary = {}, visi
 	visiting.erase(fgd)
 	return out
 
+## What map nodes without map settings of their own build with, the ones the
+## [code]func_godot/default_map_settings[/code] project setting names, as
+## [code]{map_settings, entity_fgd, classes}[/code]: their path, the path of their Entity Fgd and the sorted classnames
+## it defines, with the C# entity classes a build adds. The TrenchDot editor checks its entities against it.
+static func build_classes() -> Dictionary:
+	var settings := FuncGodotMap.default_map_settings()
+	var fgd := settings.entity_fgd if settings else null
+	var names := {}
+	if fgd:
+		for classname in fgd.get_entity_definitions():
+			names[classname] = true
+	for entry in TrenchDotCSharp.scan():
+		names[str(entry["classname"])] = true
+	var classes := PackedStringArray(names.keys())
+	classes.sort()
+	return {
+		"map_settings": str(ProjectSettings.get_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS, FuncGodotMap.ADDON_MAP_SETTINGS)),
+		"entity_fgd": fgd.resource_path if fgd else "",
+		"classes": classes,
+	}
+
 func build_config() -> Dictionary:
 	var entities: Array = []
 	var defs: Dictionary = fgd_file.get_entity_definitions() if fgd_file else {}
@@ -336,6 +360,7 @@ func build_config() -> Dictionary:
 		},
 		"tool_textures": { "clip": ms.clip_texture, "skip": ms.skip_texture, "origin": ms.origin_texture, "sky": ms.sky_texture },
 		"entities": entities,
+		"build": build_classes(),
 	}
 	if not clashes.is_empty():
 		config["clashes"] = clashes
@@ -343,7 +368,9 @@ func build_config() -> Dictionary:
 
 ## Problems in [member fgd_file]'s [code]meta_properties[/code] that [method build_config] exports without complaint.
 ## An empty [code]inputs[/code] or [code]outputs[/code] array means no curation (every discovered one stays), not
-## zero entries, and [code]size[/code] needs an [AABB] with a positive size on every axis.
+## zero entries, and [code]size[/code] needs an [AABB] with a positive size on every axis. Also warns when
+## [member fgd_file] and the Entity Fgd of the map settings maps build with, see [method build_classes], define
+## different classes.
 func lint() -> Array[String]:
 	var warnings: Array[String] = []
 	var defs: Dictionary = fgd_file.get_entity_definitions() if fgd_file else {}
@@ -356,7 +383,26 @@ func lint() -> Array[String]:
 			var size: Variant = meta["size"]
 			if not (size is AABB) or size.size.x <= 0.0 or size.size.y <= 0.0 or size.size.z <= 0.0:
 				warnings.append("%s: meta_properties.size must be an AABB with a positive size on every axis." % classname)
+	var settings := FuncGodotMap.default_map_settings()
+	var build_fgd := settings.entity_fgd if settings else null
+	if build_fgd and build_fgd != fgd_file:
+		var theirs := build_fgd.get_entity_definitions().keys()
+		var mine := defs.keys()
+		var fgd := "fgd_file %s" % fgd_file.resource_path if fgd_file and fgd_file.resource_path != "" else "fgd_file"
+		var built := "the FGD maps build with, %s (Entity Fgd of %s)" % [build_fgd.resource_path, settings.resource_path]
+		var unbuilt := mine.filter(func(c): return not c in theirs)
+		unbuilt.sort()
+		if not unbuilt.is_empty():
+			warnings.append("%s defines %s, which %s lacks. Maps that use them build plain nodes without script or collision." % [fgd, _names(unbuilt), built])
+		var unoffered := theirs.filter(func(c): return not c in mine)
+		unoffered.sort()
+		if not unoffered.is_empty():
+			warnings.append("%s defines %s, which %s lacks, so TrenchDot does not offer them." % [built, _names(unoffered), fgd])
 	return warnings
+
+static func _names(classnames: Array) -> String:
+	var shown := ", ".join(PackedStringArray(classnames.slice(0, LINT_NAMES)))
+	return shown + (" and %d more" % (classnames.size() - LINT_NAMES) if classnames.size() > LINT_NAMES else "")
 
 func export_file() -> Error:
 	for w in lint():
