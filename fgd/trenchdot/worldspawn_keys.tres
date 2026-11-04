@@ -1,0 +1,64 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDBaseClass" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_base_class.gd" id="1_class"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "WorldspawnKeys"
+description = "The map itself. Sky, fog and sun keys build a WorldEnvironment in Godot."
+class_properties = Dictionary[String, Variant]({
+"message": "",
+"sun_angles": "-40 -45",
+"sun_color": Color(1, 0.9607843137254902, 0.8784313725490196, 1),
+"sun_energy": 1.1,
+"sun_bake_mode": {
+"auto": "auto",
+"baked": "baked",
+"bounce only": "bounce",
+"real time": "realtime"
+},
+"ambient_color": Color(0.25882352941176473, 0.2784313725490196, 0.32941176470588235, 1),
+"sky_top_color": Color(0.3215686274509804, 0.5019607843137255, 0.7803921568627451, 1),
+"sky_horizon_color": Color(0.7215686274509804, 0.8, 0.8784313725490196, 1),
+"sky_ground_color": Color(0.4196078431372549, 0.4392156862745098, 0.4588235294117647, 1),
+"sky_panorama": "",
+"fog_color": Color(0.7019607843137254, 0.7803921568627451, 0.8588235294117647, 1),
+"fog_density": 0.0,
+"ambient_energy": 1.0,
+"sky_energy": 1.0,
+"glow_intensity": 0.0,
+"ssr": false,
+"environment": {
+"environment and sun": 1,
+"sun only": "sun_only",
+"none": 0
+},
+"chunk_streaming": false,
+"chunk_size": 2048.0,
+"load_radius": 8192.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"message": "Map title",
+"sun_angles": "Sun pitch and yaw in degrees",
+"sun_color": "Sun color",
+"sun_energy": "Sun brightness",
+"sun_bake_mode": ["How Bake Lighting treats the sun: baked with its shadow, only its bounced light, or left real time", "auto"],
+"ambient_color": "Ambient light",
+"sky_top_color": "Sky zenith",
+"sky_horizon_color": "Sky horizon",
+"sky_ground_color": "Below the horizon",
+"sky_panorama": "A res:// panorama image Godot shows as the sky instead of the sky colors. Godot only, the editor and its bake keep using the sky colors",
+"fog_color": "Fog color",
+"fog_density": "Fog density per meter, 0 disables fog",
+"ambient_energy": "Ambient light brightness, low for night maps",
+"sky_energy": "Sky brightness, low for night maps",
+"glow_intensity": "Glow around bright lights and emissive materials, 0 disables it",
+"ssr": "Screen space reflections in Godot, so glossy floors and wet streets mirror lights and signs",
+"environment": ["What Godot builds from these keys. A scene with its own WorldEnvironment or DirectionalLight3D keeps it", 1],
+"chunk_streaming": "Group the built map into chunks and only draw the ones near the camera",
+"chunk_size": "Size of a streaming chunk in map units",
+"load_radius": "Distance from the camera a chunk stays drawn within, in map units"
+})
+meta_properties = Dictionary[String, Variant]({
+"property_types": {"sky_panorama": "resource"}
+})

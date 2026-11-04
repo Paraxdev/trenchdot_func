@@ -105,6 +105,18 @@ static func _property_def(name: String, value: Variant, description: Variant) ->
 		def["type"] = "target_destination"
 	return def
 
+static func _class_property_defs(def: FuncGodotFGDEntityClass, skip: Dictionary) -> Array:
+	var props: Array = []
+	var declared_types: Dictionary = def.meta_properties.get("property_types", {})
+	for key in def.class_properties:
+		if skip.has(key):
+			continue
+		var prop := _property_def(key, def.class_properties[key], def.class_property_descriptions.get(key, null))
+		if declared_types.has(key):
+			prop["type"] = str(declared_types[key])
+		props.append(prop)
+	return props
+
 ## The resource sets the type itself, so unlike plain values it is not inferred from names like target or parent.
 static func _fgd_property_def(name: String, prop: Variant, desc: String) -> Dictionary:
 	if prop.description != "":
@@ -279,14 +291,12 @@ func build_config() -> Dictionary:
 			# FuncGodot stores FGD sizes as AABB(min, max) in id axes.
 			entry["size"] = [_id_to_godot(size.position), _id_to_godot(size.size)]
 
-		var props: Array = []
-		var descriptions: Dictionary = def.class_property_descriptions
-		var declared_types: Dictionary = meta.get("property_types", {})
-		for key in def.class_properties:
-			var prop := _property_def(key, def.class_properties[key], descriptions.get(key, null))
-			if declared_types.has(key):
-				prop["type"] = str(declared_types[key])
-			props.append(prop)
+		var props := _class_property_defs(def, {})
+		# Keys the editor lists that a build leaves out unless the map sets them, unlike class_properties, whose
+		# defaults it fills in.
+		var listed: Variant = meta.get("editor_properties", null)
+		if listed is FuncGodotFGDEntityClass:
+			props.append_array(_class_property_defs(listed, def.class_properties))
 		entry["properties"] = props
 		if meta.get("gizmos", []) is Array and not meta.get("gizmos", []).is_empty():
 			entry["gizmos"] = meta["gizmos"]
