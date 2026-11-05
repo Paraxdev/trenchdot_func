@@ -19,7 +19,7 @@ const MAX_INSTANCE_DEPTH := 8
 ## [method _size]. Instances of instances could otherwise multiply a small map past anything a build can take.
 const MAX_INSTANCED := 1 << 21
 
-## Whether [param format] is the format name of a TrenchDot map, or of one saved as GodotTrench.
+## Whether [param format] is the format name of a TrenchDot map, or of one saved before the rename.
 static func is_map_format(format: Variant) -> bool:
 	return format == FORMAT_NAME or format == TrenchDotLegacy.MAP_FORMAT
 

@@ -39,10 +39,10 @@ signal warmed_up
 
 @export_category("Map")
 ## Local path to the .tdm map to build a scene from.
-@export_file("*.tdm", "*.gtm") var local_map_file: String = ""
+@export_file("*.tdm", "*." + TrenchDotLegacy.MAP_EXTENSION) var local_map_file: String = ""
 
 ## Global path to the .tdm map to build a scene from. Overrides [member FuncGodotMap.local_map_file].
-@export_global_file("*.tdm", "*.gtm") var global_map_file: String = ""
+@export_global_file("*.tdm", "*." + TrenchDotLegacy.MAP_EXTENSION) var global_map_file: String = ""
 
 ## Rebuild automatically when the TrenchDot editor reports that this map was saved (live link).
 @export var auto_rebuild_on_save: bool = true
