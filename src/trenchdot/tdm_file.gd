@@ -135,12 +135,17 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 					problems.append("the NODE chunk at byte %d is damaged%s" % [at, lost])
 					damaged += 1
 					continue
+				var nested := 0
 				for i in mini(batch_nodes.size(), batch_parents.size()):
 					if batch_nodes[i] is Dictionary:
 						# The editor never puts children in a batch, and nodes nested there would escape the node charge.
+						if batch_nodes[i].get("children") is Array and not batch_nodes[i]["children"].is_empty():
+							nested += 1
 						batch_nodes[i].erase("children")
 						nodes.append(batch_nodes[i])
 						parents.append(batch_parents[i])
+				if nested > 0:
+					problems.append("%d of the nodes in the NODE chunk at byte %d held children, which were not read, as a batch lists every node on its own" % [nested, at])
 			_:
 				end = value
 
