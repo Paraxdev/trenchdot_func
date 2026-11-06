@@ -14,6 +14,10 @@ const _MAX_RAW := 1 << 30
 ## and one of values, and the chunks past either are not read.
 const _MAX_FILE_RAW := 1 << 30
 const _MAX_VALUES := 1 << 24
+## What a node takes once the map is built from it, on top of its values: node_cost in crates/td_doc/src/binary.rs in
+## values of 80 bytes, rounded down so that every file the editor saves reads in full.
+const _NODE_VALUES := { "entity": 64, "scatter": 153 }
+const _OTHER_NODE_VALUES := 12
 const _WIDE_VALUE := 1 << 16
 ## The same limit as MAX_TREE_DEPTH in crates/td_doc/src/binary.rs.
 const _MAX_TREE_DEPTH := 60
@@ -104,7 +108,16 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 			damaged += 1
 			continue
 		raw_left -= raw
+		var values_before: int = values_left[0]
 		var value = _payload(bytes.slice(start, pos), h, values_left)
+		if value is Dictionary and tag == "NODE":
+			var cost := _nodes_cost(value)
+			if cost > values_left[0]:
+				values_left[0] = values_before
+				problems.append("the NODE chunk at byte %d holds more values than a map may and was not read%s" % [at, lost])
+				damaged += 1
+				continue
+			values_left[0] -= cost
 		if not value is Dictionary:
 			var why := "holds more values than a map may and was not read" if values_left[0] < 0 else "is damaged"
 			problems.append("the %s chunk at byte %d %s%s" % [tag.strip_edges(), at, why, lost])
@@ -120,6 +133,8 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 				var batch_parents: PackedInt64Array = value.get("parents", PackedInt64Array())
 				for i in mini(batch_nodes.size(), batch_parents.size()):
 					if batch_nodes[i] is Dictionary:
+						# The editor never puts children in a batch, and nodes nested there would escape the node charge.
+						batch_nodes[i].erase("children")
 						nodes.append(batch_nodes[i])
 						parents.append(batch_parents[i])
 			_:
@@ -240,6 +255,17 @@ static func _payload(data: PackedByteArray, h: Dictionary, values_left: Array = 
 			return null
 	values_left[0] -= values
 	return bytes_to_var(raw)
+
+## What the nodes of the NODE batch [param batch] take once built, in values, see [constant _NODE_VALUES].
+static func _nodes_cost(batch: Dictionary) -> int:
+	var batch_nodes = batch.get("nodes")
+	if not batch_nodes is Array:
+		return 0
+	var cost := 0
+	for node in batch_nodes:
+		if node is Dictionary:
+			cost += _NODE_VALUES.get(node.get("type"), _OTHER_NODE_VALUES)
+	return cost
 
 ## How many values [param raw] holds in the encoding the editor writes, see crates/td_doc/src/variant.rs, or -1 when
 ## it holds anything else. Past [param limit] it stops and returns limit + 1. An array or dictionary counts its
