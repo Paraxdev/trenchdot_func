@@ -265,7 +265,9 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 		for idx in indices:
 			if not vertex_faces.has(int(idx)):
 				vertex_faces[int(idx)] = []
-			vertex_faces[int(idx)].append(fi)
+			var list: Array = vertex_faces[int(idx)]
+			if list.is_empty() or list.back() != fi:
+				list.append(fi)
 
 	var units := PackedVector3Array()
 	var raws := PackedVector3Array()
