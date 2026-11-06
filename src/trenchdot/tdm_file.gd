@@ -129,8 +129,12 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 			"LMAP":
 				lightmap = value
 			"NODE":
-				var batch_nodes: Array = value.get("nodes", [])
-				var batch_parents: PackedInt64Array = value.get("parents", PackedInt64Array())
+				var batch_nodes = value.get("nodes", [])
+				var batch_parents = value.get("parents", PackedInt64Array())
+				if not batch_nodes is Array or not batch_parents is PackedInt64Array:
+					problems.append("the NODE chunk at byte %d is damaged%s" % [at, lost])
+					damaged += 1
+					continue
 				for i in mini(batch_nodes.size(), batch_parents.size()):
 					if batch_nodes[i] is Dictionary:
 						# The editor never puts children in a batch, and nodes nested there would escape the node charge.
