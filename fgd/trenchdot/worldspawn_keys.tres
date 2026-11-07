@@ -33,6 +33,7 @@ class_properties = Dictionary[String, Variant]({
 "sun only": "sun_only",
 "none": 0
 },
+"_cull_void_faces": false,
 "chunk_streaming": false,
 "chunk_size": 2048.0,
 "load_radius": 8192.0
@@ -55,6 +56,7 @@ class_property_descriptions = Dictionary[String, Variant]({
 "glow_intensity": "Glow around bright lights and emissive materials, 0 disables it",
 "ssr": "Screen space reflections in Godot, so glossy floors and wet streets mirror lights and signs",
 "environment": ["What Godot builds from these keys. A scene with its own WorldEnvironment or DirectionalLight3D keeps it", 1],
+"_cull_void_faces": "Set to 1 on a sealed map to drop the faces that only face the void outside it. A brush entity can set it to 0 to keep its own faces",
 "chunk_streaming": "Group the built map into chunks and only draw the ones near the camera",
 "chunk_size": "Size of a streaming chunk in map units",
 "load_radius": "Distance from the camera a chunk stays drawn within, in map units"
