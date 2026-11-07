@@ -70,6 +70,10 @@ var scale_factor: float = 0.03125
 ## Note that this has a performance impact that scales with how many brushes are in the entity.
 @export var cull_interior_faces_property: String = "_cull_interior_faces"
 
+## Property that tells whether faces that face the void of a sealed map are left out, on worldspawn for the whole map.
+## The same property set to 0 on a brush entity keeps that entity's faces. Maps that leak keep every face.
+@export var cull_void_faces_property: String = "_cull_void_faces"
+
 @export_subgroup("")
 #endregion
 

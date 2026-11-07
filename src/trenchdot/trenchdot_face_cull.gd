@@ -311,7 +311,7 @@ static func _solid(brush: FuncGodotData.BrushData, inv_scale: float) -> Solid:
 	solid.reach = solid.bounds.grow(COPLANAR_DIST)
 	return solid
 
-## Marks hidden faces, returns how many. [param map_path] names the map in warnings.
+## Marks hidden faces, returns how many, void faces of sealed maps included, see [TrenchDotVoidCull]. [param map_path] names the map in warnings.
 static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodotMapSettings, materials: Dictionary, map_path := "") -> int:
 	var inv_scale := 1.0 / maxf(settings.scale_factor, 1e-9)
 	var planes: Dictionary = {}
@@ -397,7 +397,7 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 				break
 	if interior.left <= 0:
 		push_warning("[TDM] %s has too many faces inside closed solids to test in time, some buried faces are still drawn" % map_path)
-	return hidden
+	return hidden + TrenchDotVoidCull.apply(entities, settings, materials, map_path)
 
 ## Buckets solids by the grid cells their bounds touch. A solid that encloses a face also holds the face's centre,
 ## so the solids in the centre's cell are all the candidates, still in their original order.
