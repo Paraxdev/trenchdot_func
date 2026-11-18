@@ -245,6 +245,17 @@ static func definition_sources(fgd: FuncGodotFGDFile, out: Dictionary = {}, visi
 	visiting.erase(fgd)
 	return out
 
+## Whether the entity definition at [param path] is a copy the TrenchDot editor made with Override in project, so
+## defining its classname twice is meant.
+static func is_override(path: String) -> bool:
+	if not (ResourceLoader.has_cached(path) or ResourceLoader.exists(path)):
+		return false
+	var def := load(path) as FuncGodotFGDEntityClass
+	if not def:
+		return false
+	var mark: Variant = def.get_meta("trenchdot_override", false)
+	return typeof(mark) == TYPE_BOOL and mark
+
 ## What map nodes without map settings of their own build with, the ones the
 ## [code]func_godot/default_map_settings[/code] project setting names, as
 ## [code]{map_settings, entity_fgd, classes}[/code]: their path, the path of their Entity Fgd and the sorted classnames
@@ -355,7 +366,10 @@ func build_config() -> Dictionary:
 	var sources := definition_sources(fgd_file)
 	for classname in sources:
 		if sources[classname].size() > 1:
-			clashes.append({ "classname": classname, "definitions": sources[classname] })
+			var clash := { "classname": classname, "definitions": sources[classname] }
+			if is_override(sources[classname][-1]):
+				clash["intended"] = true
+			clashes.append(clash)
 
 	var ms := map_settings if map_settings else FuncGodotMapSettings.new()
 	var config := {
