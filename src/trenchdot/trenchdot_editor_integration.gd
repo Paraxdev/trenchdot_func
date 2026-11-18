@@ -23,6 +23,7 @@ const SETTING_CONFIG := "trenchdot/game_config"
 const SETTING_AUTO_EXPORT := "trenchdot/auto_export_game_config"
 const SETTING_LIVE_LINK := "trenchdot/live_link_enabled"
 const SETTING_PORT := "trenchdot/live_link_port"
+const OVERRIDE_SETTINGS: PackedStringArray = ["func_godot/default_map_settings", SETTING_CONFIG]
 const DEFAULT_CONFIG := "res://addons/func_godot/game_config/trenchdot/trenchdot_game_config.tres"
 const DEFAULT_PORT := 7842
 ## Ports below 1024 need admin rights on most systems, so the setting stays in this range.
@@ -382,6 +383,8 @@ func _handle(msg: Dictionary) -> Dictionary:
 			return scan()
 		"play":
 			return play()
+		"project_settings":
+			return set_project_settings(msg.get("settings"))
 		"inspect":
 			return inspect(path, msg.get("ids", []))
 		"live_begin", "live_resync":
@@ -418,6 +421,29 @@ func scan() -> Dictionary:
 	_scan_requested = true
 	_scans += 1
 	return { "ok": true, "scan": _scans }
+
+## Sets the project settings Override in project points at its files and saves project.godot. Only
+## [constant OVERRIDE_SETTINGS] with res:// paths are taken, anything else is refused whole. Godot keeps the settings in
+## memory and writes them back over a project.godot edited behind its back, so the TrenchDot editor asks this way while
+## Godot has the project open.
+func set_project_settings(settings: Variant) -> Dictionary:
+	if not settings is Dictionary or settings.is_empty():
+		return { "ok": false, "error": "settings must name at least one of %s" % ", ".join(OVERRIDE_SETTINGS) }
+	for key in settings:
+		if not (key is String and key in OVERRIDE_SETTINGS):
+			return { "ok": false, "error": "%s cannot be set from the TrenchDot editor" % key }
+		var value: Variant = settings[key]
+		if not value is String or not value.begins_with("res://"):
+			return { "ok": false, "error": "%s must be a res:// path, got %s" % [key, value] }
+	var changed: Array = settings.keys().filter(func(key: String) -> bool: return ProjectSettings.get_setting(key) != settings[key])
+	if changed.is_empty():
+		return { "ok": true }
+	for key in changed:
+		ProjectSettings.set_setting(key, settings[key])
+	var err := ProjectSettings.save()
+	if err != OK:
+		return { "ok": false, "error": "project.godot could not be saved, %s" % error_string(err) }
+	return { "ok": true }
 
 ## Saves the open scenes and runs the project's main scene, as Play does in Godot, so the game starts from the scenes
 ## Godot shows, with live edits and builds that were not saved yet. [code]stale[/code] names the open scenes built with
